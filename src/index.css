@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Lora:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:ital,wght@0,100..700;1,100..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 171 77% 100%;
+    --foreground: 176 60% 19%;
+    --card: 0 0% 100%;
+    --card-foreground: 176 60% 19%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 176 60% 19%;
+    --primary: 175 84% 31%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 171 77% 97%;
+    --secondary-foreground: 176 60% 19%;
+    --muted: 171 77% 95%;
+    --muted-foreground: 176 30% 40%;
+    --accent: 172 66% 50%;
+    --accent-foreground: 176 60% 19%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 175 30% 90%;
+    --input: 175 30% 90%;
+    --ring: 175 84% 31%;
+
+    --radius: 0.75rem;
+
+    --font-sans: 'Geist', sans-serif;
+    --font-mono: 'Geist Mono', monospace;
+  }
+
+  .dark {
+    --background: 176 85% 5%;
+    --foreground: 171 77% 97%;
+    --card: 176 85% 8%;
+    --card-foreground: 171 77% 97%;
+    --popover: 176 85% 8%;
+    --popover-foreground: 171 77% 97%;
+    --primary: 172 66% 50%;
+    --primary-foreground: 176 85% 5%;
+    --secondary: 176 85% 12%;
+    --secondary-foreground: 171 77% 97%;
+    --muted: 176 85% 12%;
+    --muted-foreground: 171 30% 70%;
+    --accent: 172 66% 50%;
+    --accent-foreground: 176 85% 5%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 171 77% 97%;
+    --border: 176 85% 15%;
+    --input: 176 85% 15%;
+    --ring: 172 66% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+    letter-spacing: var(--tracking-normal);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
