@@ -3,6 +3,39 @@ import { blink } from '@/blink/client';
 import toast from 'react-hot-toast';
 
 // Types based on database schema
+export interface Audit {
+  id: string;
+  userId: string | null;
+  url: string;
+  score: number;
+  issues: string; // JSON string
+  recommendations: string; // JSON string
+  createdAt: string;
+}
+
+export interface GeneratedContent {
+  id: string;
+  userId: string | null;
+  siteUrl: string;
+  title: string;
+  content: string;
+  keywords: string; // JSON string
+  metaDescription: string | null;
+  wordCount: number;
+  createdAt: string;
+}
+
+export interface AutomationSetting {
+  id: string;
+  userId: string | null;
+  enabled: number | string;
+  frequency: string;
+  lastRun: string | null;
+  nextRun: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Project {
   id: string;
   userId: string;
@@ -342,6 +375,49 @@ export function useDeleteArticle() {
     },
     onSuccess: (variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.articles(variables.projectId) });
+    },
+  });
+}
+
+// ==================== Audits ====================
+
+export function useAudits(limit = 20) {
+  return useQuery<Audit[]>({
+    queryKey: ['audits', limit],
+    queryFn: async () => {
+      return await blink.db.table<Audit>('audits').list({
+        orderBy: { createdAt: 'desc' },
+        limit,
+      });
+    },
+  });
+}
+
+// ==================== Generated Content ====================
+
+export function useGeneratedContent(limit = 20) {
+  return useQuery<GeneratedContent[]>({
+    queryKey: ['generated-content', limit],
+    queryFn: async () => {
+      return await blink.db.table<GeneratedContent>('generated_content').list({
+        orderBy: { createdAt: 'desc' },
+        limit,
+      });
+    },
+  });
+}
+
+// ==================== Automation Settings ====================
+
+export function useAutomationSettings() {
+  return useQuery<AutomationSetting | null>({
+    queryKey: ['automation-settings'],
+    queryFn: async () => {
+      const rows = await blink.db.table<AutomationSetting>('automation_settings').list({
+        orderBy: { createdAt: 'asc' },
+        limit: 1,
+      });
+      return rows[0] || null;
     },
   });
 }
