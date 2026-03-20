@@ -1,144 +1,138 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  BarChart3,
-  Globe,
-  Search,
-  FileText,
-  Share2,
-  LayoutDashboard,
-  Settings,
-  TrendingUp,
-  Users,
-  Clock,
-  PlusCircle,
-  Zap,
+  BarChart3, Globe, Search, FileText, Share2,
+  LayoutDashboard, Settings, TrendingUp, Users,
+  Clock, PlusCircle, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SiteAudit } from '@/components/seo/SiteAudit';
+import { AutomationEngine } from '@/components/seo/AutomationEngine';
 import { ContentLab } from '@/components/seo/ContentLab';
-import { AutomationSettings } from '@/components/seo/AutomationSettings';
 import { OverviewDashboard } from '@/components/seo/OverviewDashboard';
 import { useProjects } from '@/hooks/useData';
 
-type DashboardView = 'overview' | 'audit' | 'content' | 'automation' | 'distribution' | 'backlinks' | 'settings';
+type View = 'overview' | 'audit' | 'automation' | 'content' | 'distribution' | 'backlinks' | 'settings';
 
-const VIEW_LABELS: Record<DashboardView, string> = {
-  overview: 'Overview',
-  audit: 'Site Audit',
-  content: 'Content Lab',
-  automation: 'Automation Engine',
-  distribution: 'Distribution',
-  backlinks: 'Backlinks',
-  settings: 'Settings',
-};
+const NAV: { view: View; icon: React.ReactNode; label: string }[] = [
+  { view: 'overview',      icon: <LayoutDashboard size={18} />, label: 'Overview' },
+  { view: 'audit',         icon: <Globe size={18} />,           label: 'Site Audit' },
+  { view: 'automation',    icon: <Zap size={18} />,             label: 'Automation' },
+  { view: 'content',       icon: <FileText size={18} />,        label: 'Content Lab' },
+  { view: 'distribution',  icon: <Share2 size={18} />,          label: 'Distribution' },
+  { view: 'backlinks',     icon: <Users size={18} />,           label: 'Backlinks' },
+];
 
 export const Dashboard = () => {
+  const [active, setActive] = useState<View>('overview');
   const { data: projects = [] } = useProjects();
-  const selectedProjectId = projects[0]?.id || 'demo-project';
-  const [activeView, setActiveView] = React.useState<DashboardView>('overview');
+  const projectId = projects[0]?.id ?? 'demo-project';
 
   const renderContent = () => {
-    switch (activeView) {
+    switch (active) {
       case 'overview':
-        return <OverviewDashboard onNavigate={(v) => setActiveView(v as DashboardView)} />;
+        return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
       case 'audit':
         return <SiteAudit />;
-      case 'content':
-        return <ContentLab projectId={selectedProjectId} />;
       case 'automation':
-        return <AutomationSettings projectId={selectedProjectId} />;
+        return <AutomationEngine />;
+      case 'content':
+        return <ContentLab projectId={projectId} />;
       default:
         return (
-          <div className="flex flex-col items-center justify-center h-[400px] border-2 border-dashed rounded-xl text-muted-foreground gap-3">
-            <span className="text-4xl">🚧</span>
-            <p className="font-medium capitalize">{VIEW_LABELS[activeView]} — Coming Soon</p>
+          <div className="h-[400px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl text-muted-foreground gap-3">
+            <span className="text-4xl opacity-20">🚧</span>
+            <p className="font-medium capitalize">{active} — Coming Soon</p>
           </div>
         );
     }
   };
 
+  const VIEW_TITLE: Record<View, string> = {
+    overview: 'Overview',
+    audit: 'Site Audit',
+    automation: 'AI Automation Engine',
+    content: 'Content Lab',
+    distribution: 'Distribution',
+    backlinks: 'Backlinks',
+    settings: 'Settings',
+  };
+
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-60 border-r bg-card hidden md:flex flex-col shrink-0">
-        <div className="p-5 border-b">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-              <BarChart3 className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-sm">SEO Growth Engine</span>
-          </div>
+      <aside className="w-60 border-r bg-card flex-col hidden md:flex shrink-0">
+        <div className="h-16 border-b flex items-center px-5 gap-2.5">
+          <Zap className="h-6 w-6 text-primary" />
+          <span className="font-bold tracking-tight">SEO Growth</span>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
-          <NavItem icon={<LayoutDashboard size={18} />} label="Overview"         active={activeView === 'overview'}    onClick={() => setActiveView('overview')} />
-          <NavItem icon={<Search size={18} />}          label="Site Audit"       active={activeView === 'audit'}       onClick={() => setActiveView('audit')} />
-          <NavItem icon={<Zap size={18} />}             label="Automation"       active={activeView === 'automation'}  onClick={() => setActiveView('automation')} />
-          <NavItem icon={<FileText size={18} />}        label="Content Lab"      active={activeView === 'content'}     onClick={() => setActiveView('content')} />
-          <NavItem icon={<Share2 size={18} />}          label="Distribution"     active={activeView === 'distribution'} onClick={() => setActiveView('distribution')} />
-          <NavItem icon={<Users size={18} />}           label="Backlinks"        active={activeView === 'backlinks'}   onClick={() => setActiveView('backlinks')} />
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+          {NAV.map(({ view, icon, label }) => (
+            <button
+              key={view}
+              onClick={() => setActive(view)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                active === view
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+              }`}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
         </nav>
 
-        <div className="p-3 border-t space-y-2">
-          <NavItem icon={<Settings size={18} />} label="Settings" active={activeView === 'settings'} onClick={() => setActiveView('settings')} />
-          <div className="p-3 bg-primary/10 rounded-xl border border-primary/20">
-            <p className="text-xs font-semibold text-primary mb-0.5">FREE PLAN</p>
-            <p className="text-xs text-muted-foreground mb-2">Run your first audit to get started.</p>
-            <div className="w-full bg-primary/20 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-primary w-0 h-full" />
-            </div>
+        <div className="p-3 border-t">
+          <button
+            onClick={() => setActive('settings')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              active === 'settings'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+            }`}
+          >
+            <Settings size={18} /> Settings
+          </button>
+
+          <div className="mt-3 p-3 bg-primary/5 rounded-xl border border-primary/10">
+            <p className="text-xs font-semibold text-primary mb-1">FREE PLAN</p>
+            <p className="text-xs text-muted-foreground">Unlimited audits &amp; generation</p>
           </div>
         </div>
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-y-auto min-w-0">
-        <header className="h-14 border-b flex items-center justify-between px-6 bg-card/60 backdrop-blur-sm sticky top-0 z-10">
-          <h1 className="text-base font-semibold">{VIEW_LABELS[activeView]}</h1>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="h-16 border-b bg-card/60 backdrop-blur-sm flex items-center justify-between px-6 shrink-0">
+          <h1 className="text-base font-semibold">{VIEW_TITLE[active]}</h1>
           <div className="flex items-center gap-3">
             <Button
-              size="sm"
               variant="outline"
-              className="hidden sm:flex gap-1.5 text-xs"
-              onClick={() => setActiveView('audit')}
+              size="sm"
+              onClick={() => setActive('audit')}
+              className="hidden sm:flex"
             >
-              <Search className="h-3.5 w-3.5" /> New Audit
+              <Globe className="h-4 w-4 mr-1.5" /> Audit Site
             </Button>
             <Button
               size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => setActiveView('automation')}
+              onClick={() => setActive('automation')}
+              className="shadow-sm shadow-primary/20"
             >
-              <Zap className="h-3.5 w-3.5" /> Generate Content
+              <Zap className="h-4 w-4 mr-1.5" /> Generate
             </Button>
           </div>
         </header>
 
-        <div className="p-6 max-w-7xl mx-auto">
-          {renderContent()}
-        </div>
-      </main>
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-6 max-w-6xl mx-auto">
+            {renderContent()}
+          </div>
+        </main>
+      </div>
     </div>
   );
 };
-
-const NavItem = ({
-  icon, label, active = false, onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) => (
-  <button
-    onClick={onClick}
-    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-      active
-        ? 'bg-primary text-primary-foreground shadow-sm shadow-primary/20'
-        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-    }`}
-  >
-    {icon}
-    <span className="font-medium">{label}</span>
-  </button>
-);

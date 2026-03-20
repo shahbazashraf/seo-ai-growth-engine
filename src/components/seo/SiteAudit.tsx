@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import {
+  Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
+  Info, Globe, ArrowRight, Clock, RotateCcw
+} from 'lucide-react';
 import { blink } from '@/blink/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import {
-  Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  Info, Globe, FileText, History, ExternalLink
-} from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import toast from 'react-hot-toast';
 
 const AUDIT_URL = 'https://gbqxp58q--seo-audit.functions.blink.new';
@@ -29,58 +30,70 @@ interface AuditResult {
   wordCount: number;
 }
 
+interface AuditRecord {
+  id: string;
+  url: string;
+  score: number;
+  issues: string;
+  recommendations: string;
+  createdAt: string;
+}
+
 const STEPS = [
   'Fetching page...',
   'Analyzing SEO signals...',
-  'Generating recommendations...',
+  'Checking meta tags & structure...',
+  'Generating AI recommendations...',
   'Saving results...',
 ];
 
 const severityConfig = {
-  critical: { color: 'bg-red-100 text-red-700 border-red-200', icon: XCircle, iconClass: 'text-red-500' },
-  warning:  { color: 'bg-amber-100 text-amber-700 border-amber-200', icon: AlertTriangle, iconClass: 'text-amber-500' },
-  info:     { color: 'bg-green-100 text-green-700 border-green-200', icon: CheckCircle2, iconClass: 'text-green-500' },
+  critical: { color: 'bg-red-100 text-red-700 border-red-200', icon: <XCircle className="h-4 w-4 text-red-500" />, label: 'Critical' },
+  warning:  { color: 'bg-amber-100 text-amber-700 border-amber-200', icon: <AlertTriangle className="h-4 w-4 text-amber-500" />, label: 'Warning' },
+  info:     { color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="h-4 w-4 text-emerald-500" />, label: 'Pass' },
 };
 
 function ScoreRing({ score }: { score: number }) {
-  const color = score >= 80 ? '#0d9488' : score >= 50 ? '#f59e0b' : '#ef4444';
-  const r = 40;
-  const circumference = 2 * Math.PI * r;
-  const offset = circumference - (score / 100) * circumference;
+  const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+  const r = 54;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+
   return (
-    <div className="flex flex-col items-center justify-center gap-1">
-      <svg width="104" height="104" viewBox="0 0 104 104">
-        <circle cx="52" cy="52" r={r} fill="none" stroke="hsl(var(--secondary))" strokeWidth="10" />
+    <div className="flex flex-col items-center justify-center">
+      <svg width="140" height="140" viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth="12" />
         <circle
-          cx="52" cy="52" r={r} fill="none"
-          stroke={color} strokeWidth="10"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
+          cx="70" cy="70" r={r} fill="none"
+          stroke={color} strokeWidth="12"
+          strokeDasharray={circ} strokeDashoffset={offset}
           strokeLinecap="round"
-          transform="rotate(-90 52 52)"
+          transform="rotate(-90 70 70)"
           style={{ transition: 'stroke-dashoffset 1s ease' }}
         />
-        <text x="52" y="52" dominantBaseline="middle" textAnchor="middle"
-          fontSize="22" fontWeight="700" fill="currentColor">
+        <text x="70" y="70" textAnchor="middle" dominantBaseline="central" fontSize="28" fontWeight="bold" fill={color}>
           {score}
         </text>
+        <text x="70" y="94" textAnchor="middle" fontSize="11" fill="hsl(var(--muted-foreground))">/ 100</text>
       </svg>
-      <span className="text-xs font-semibold text-muted-foreground">/ 100</span>
+      <p className="text-sm font-semibold mt-1" style={{ color }}>
+        {score >= 80 ? 'Excellent' : score >= 60 ? 'Needs Work' : 'Poor'}
+      </p>
     </div>
   );
 }
 
 export const SiteAudit = () => {
   const [url, setUrl] = useState('');
+  const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<AuditResult | null>(null);
+  const [error, setError] = useState('');
 
-  const { data: history = [], refetch: refetchHistory } = useQuery({
-    queryKey: ['audit-history'],
+  const { data: history = [], refetch: refetchHistory } = useQuery<AuditRecord[]>({
+    queryKey: ['audits-history'],
     queryFn: async () => {
-      const rows = await blink.db.table<any>('audits').list({
+      const rows = await blink.db.table<AuditRecord>('audits').list({
         orderBy: { createdAt: 'desc' },
         limit: 10,
       });
@@ -91,90 +104,125 @@ export const SiteAudit = () => {
   const runAudit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
-    setLoading(true);
-    setResult(null);
-    setStepIndex(0);
-    setProgress(0);
 
-    // Animate progress — use ref-based counter to avoid stale closure
-    let currentProgress = 0;
-    const interval = setInterval(() => {
-      currentProgress = Math.min(currentProgress + 1.5, 92);
-      setProgress(currentProgress);
-      setStepIndex(Math.min(Math.floor((currentProgress / 100) * STEPS.length), STEPS.length - 1));
-      if (currentProgress >= 92) clearInterval(interval);
-    }, 200);
+    setError('');
+    setResult(null);
+    setLoading(true);
+    setStep(0);
+
+    // Simulate progressive steps with real timing
+    const stepDurations = [600, 800, 700, 1200, 400];
+    let stepIndex = 0;
+
+    const advanceStep = () => {
+      if (stepIndex < STEPS.length - 1) {
+        stepIndex++;
+        setStep(stepIndex);
+      }
+    };
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let elapsed = 0;
+    for (let i = 1; i < STEPS.length; i++) {
+      elapsed += stepDurations[i - 1];
+      const t = setTimeout(() => advanceStep(), elapsed);
+      timers.push(t);
+    }
 
     try {
+      const token = await blink.auth.getValidToken();
       const res = await fetch(AUDIT_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         body: JSON.stringify({ url: url.trim() }),
       });
 
-      clearInterval(interval);
+      timers.forEach(clearTimeout);
+      setStep(STEPS.length - 1);
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Audit failed');
-      }
+      const data = await res.json();
 
-      const data: AuditResult = await res.json();
-      setProgress(100);
-      setStepIndex(STEPS.length - 1);
+      if (!res.ok) throw new Error(data.error || 'Audit failed');
+
       setResult(data);
-      refetchHistory();
-      toast.success(`Audit complete — Score: ${data.score}/100`);
+      await refetchHistory();
+      toast.success('Audit complete!');
     } catch (err: any) {
-      clearInterval(interval);
-      setProgress(0);
+      timers.forEach(clearTimeout);
+      setError(err.message || 'Something went wrong. Please try again.');
       toast.error(err.message || 'Audit failed');
     } finally {
       setLoading(false);
     }
   };
 
+  const progressPct = loading ? Math.round(((step + 1) / STEPS.length) * 100) : 0;
+
   const criticalCount = result?.issues.filter(i => i.severity === 'critical' && !i.passed).length ?? 0;
   const warningCount = result?.issues.filter(i => i.severity === 'warning' && !i.passed).length ?? 0;
 
   return (
     <div className="space-y-8">
-      {/* Input Card */}
+      {/* Input */}
       <Card className="border-primary/20 shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5 text-primary" />
-            SEO Site Audit
+            <Globe className="h-5 w-5 text-primary" />
+            Site SEO Audit
           </CardTitle>
-          <CardDescription>Enter any URL to run a full SEO analysis with an AI-powered score and recommendations.</CardDescription>
+          <CardDescription>
+            Paste any URL and our engine will fetch, parse, and score your on-page SEO in real time.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={runAudit} className="flex flex-col sm:flex-row gap-3">
             <Input
               type="url"
-              placeholder="https://yourwebsite.com"
+              placeholder="https://yoursite.com"
               value={url}
               onChange={e => setUrl(e.target.value)}
-              required
               disabled={loading}
+              required
               className="flex-1 h-12 text-base"
             />
-            <Button size="lg" className="h-12 px-8 shrink-0" disabled={loading}>
-              {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />Analyzing...</> : <><Search className="mr-2 h-5 w-5" />Start Audit</>}
+            <Button type="submit" disabled={loading} className="h-12 px-8 shadow-md shadow-primary/20">
+              {loading ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <Search className="h-5 w-5 mr-2" />}
+              {loading ? 'Analyzing...' : 'Start Audit'}
             </Button>
           </form>
 
           {/* Progress */}
           {loading && (
             <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                  {STEPS[Math.min(stepIndex, STEPS.length - 1)]}
-                </span>
-                <span className="font-semibold text-primary">{progress}%</span>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground font-medium">{STEPS[step]}</span>
+                <span className="text-primary font-semibold">{progressPct}%</span>
               </div>
-              <Progress value={progress} className="h-2" />
+              <Progress value={progressPct} className="h-2" />
+              <div className="flex gap-2 flex-wrap">
+                {STEPS.map((s, i) => (
+                  <span
+                    key={i}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                      i < step ? 'bg-primary/10 border-primary/20 text-primary' :
+                      i === step ? 'bg-primary text-primary-foreground border-primary animate-pulse' :
+                      'bg-muted border-border text-muted-foreground'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+              <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              {error}
             </div>
           )}
         </CardContent>
@@ -182,85 +230,86 @@ export const SiteAudit = () => {
 
       {/* Results */}
       {result && (
-        <div className="space-y-6 animate-fade-in">
-          {/* Score + summary */}
-          <div className="grid md:grid-cols-4 gap-4">
-            <Card className="md:col-span-1 flex items-center justify-center p-6 bg-secondary/30">
-              <div className="text-center space-y-2">
-                <ScoreRing score={result.score} />
-                <p className="font-semibold text-sm">
-                  {result.score >= 80 ? '🟢 Good' : result.score >= 50 ? '🟡 Needs Work' : '🔴 Poor'}
-                </p>
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Score + Summary */}
+          <Card className="flex flex-col items-center p-6 gap-4 border-primary/10">
+            <ScoreRing score={result.score} />
+            <div className="w-full space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-red-600 font-semibold">{criticalCount} Critical</span>
+                <span className="text-amber-600 font-semibold">{warningCount} Warnings</span>
               </div>
-            </Card>
-            <div className="md:col-span-3 grid grid-cols-3 gap-4">
-              <Card className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">Critical Issues</span>
-                <span className="text-3xl font-bold text-red-500">{criticalCount}</span>
-              </Card>
-              <Card className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">Warnings</span>
-                <span className="text-3xl font-bold text-amber-500">{warningCount}</span>
-              </Card>
-              <Card className="p-4 flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground uppercase tracking-wider">Response Time</span>
-                <span className="text-3xl font-bold">{result.responseTime}ms</span>
-              </Card>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Response: {result.responseTime}ms</span>
+                <span>Words: ~{result.wordCount}</span>
+              </div>
             </div>
-          </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => { setResult(null); setUrl(''); }}
+            >
+              <RotateCcw className="h-3 w-3 mr-2" /> New Audit
+            </Button>
+          </Card>
 
-          <div className="grid lg:grid-cols-2 gap-6">
-            {/* Issues */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  SEO Checks ({result.issues.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                {result.issues.map((issue, i) => {
-                  const cfg = severityConfig[issue.severity];
-                  const Icon = cfg.icon;
-                  return (
-                    <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border ${cfg.color}`}>
-                      <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${cfg.iconClass}`} />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm">{issue.check}</span>
-                          <Badge variant="outline" className={`text-[10px] uppercase ${cfg.color}`}>
-                            {issue.severity}
-                          </Badge>
-                        </div>
-                        <p className="text-xs mt-0.5 opacity-90">{issue.detail}</p>
+          {/* Issues */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Issues Found</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+              {result.issues.map((issue, idx) => {
+                const cfg = severityConfig[issue.severity];
+                return (
+                  <div
+                    key={idx}
+                    className={`flex items-start gap-3 p-3 rounded-lg border ${
+                      issue.passed ? 'bg-emerald-50/50 border-emerald-100' : cfg.color.replace('text-', 'border-').split(' ')[0] + ' ' + 'border-opacity-50 bg-opacity-30'
+                    } ${!issue.passed ? cfg.color : ''}`}
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {issue.passed ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : cfg.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm">{issue.check}</span>
+                        {!issue.passed && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border ${cfg.color}`}>
+                            {cfg.label}
+                          </span>
+                        )}
                       </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{issue.detail}</p>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
-
-            {/* Recommendations */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-primary" />
-                  AI Recommendations
-                </CardTitle>
-                <CardDescription>Actionable steps to improve your score</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {result.recommendations.map((rec, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-secondary/40 rounded-lg border border-primary/5">
-                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0">
-                      {i + 1}
-                    </div>
-                    <p className="text-sm text-foreground leading-relaxed">{rec}</p>
                   </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          {/* Recommendations */}
+          <Card className="lg:col-span-3">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Info className="h-4 w-4 text-primary" />
+                AI Recommendations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ol className="space-y-3">
+                {result.recommendations.map((rec, idx) => (
+                  <li key={idx} className="flex items-start gap-3">
+                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                      {idx + 1}
+                    </div>
+                    <p className="text-sm leading-relaxed text-foreground">{rec}</p>
+                  </li>
                 ))}
-              </CardContent>
-            </Card>
-          </div>
+              </ol>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -268,47 +317,58 @@ export const SiteAudit = () => {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4 text-primary" />
+            <Clock className="h-4 w-4 text-primary" />
             Audit History
           </CardTitle>
         </CardHeader>
         <CardContent>
           {history.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground">
-              <Search className="h-8 w-8 mx-auto mb-2 opacity-20" />
-              <p className="text-sm">No audits yet. Run your first audit above.</p>
+            <div className="py-12 text-center text-muted-foreground">
+              <Globe className="h-10 w-10 mx-auto mb-3 opacity-20" />
+              <p>No audits yet. Run your first audit above.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">URL</th>
-                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Score</th>
-                    <th className="text-left py-2 px-3 text-muted-foreground font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((row: any) => (
-                    <tr key={row.id} className="border-b last:border-0 hover:bg-secondary/20 transition-colors">
-                      <td className="py-2.5 px-3">
-                        <a href={row.url} target="_blank" rel="noopener noreferrer"
-                          className="text-primary hover:underline flex items-center gap-1 max-w-[280px] truncate">
-                          {row.url} <ExternalLink className="h-3 w-3 shrink-0" />
-                        </a>
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className={`font-bold ${row.score >= 80 ? 'text-green-600' : row.score >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
-                          {row.score}/100
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-3 text-muted-foreground">
-                        {new Date(row.createdAt || row.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="rounded-md border overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>URL</TableHead>
+                    <TableHead>Score</TableHead>
+                    <TableHead className="hidden sm:table-cell">Date</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {history.map(row => {
+                    const score = Number(row.score);
+                    const scoreColor = score >= 80 ? 'text-emerald-600' : score >= 60 ? 'text-amber-600' : 'text-red-600';
+                    return (
+                      <TableRow key={row.id} className="hover:bg-secondary/20 transition-colors">
+                        <TableCell className="font-medium max-w-[220px] truncate">{row.url}</TableCell>
+                        <TableCell>
+                          <span className={`font-bold ${scoreColor}`}>{score}</span>
+                          <span className="text-muted-foreground text-xs">/100</span>
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+                          {new Date(row.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setUrl(row.url);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                          >
+                            Re-audit <ArrowRight className="h-3 w-3 ml-1" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           )}
         </CardContent>
