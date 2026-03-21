@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Globe, FileText, Zap, Activity, ArrowRight,
-  Link2, Share2, Settings, Plug, CheckCircle2,
+  Link2, Send, Settings, Plug, CheckCircle2, TrendingUp,
 } from 'lucide-react';
 import { blink } from '@/blink/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -12,16 +12,15 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 interface OverviewProps { onNavigate: (view: string) => void }
 
-type ActivityItem = { type: 'audit' | 'content' | 'publish' | 'dist'; label: string; meta: string; date: string };
+type ActivityItem = { type: 'audit' | 'content' | 'distribution'; label: string; meta: string; date: string };
 
 const TYPE_STYLE: Record<ActivityItem['type'], { bg: string; icon: React.ReactNode; badge: string }> = {
-  audit:   { bg: 'bg-blue-100',       icon: <Globe className="h-4 w-4 text-blue-600" />,       badge: 'text-blue-600 border-blue-200' },
-  content: { bg: 'bg-primary/10',     icon: <FileText className="h-4 w-4 text-primary" />,      badge: 'text-primary border-primary/20' },
-  publish: { bg: 'bg-emerald-100',    icon: <CheckCircle2 className="h-4 w-4 text-emerald-600" />, badge: 'text-emerald-600 border-emerald-200' },
-  dist:    { bg: 'bg-amber-100',      icon: <Share2 className="h-4 w-4 text-amber-600" />,      badge: 'text-amber-600 border-amber-200' },
+  audit:        { bg: 'bg-blue-100',   icon: <Globe className="h-4 w-4 text-blue-600" />,   badge: 'text-blue-600 border-blue-200' },
+  content:      { bg: 'bg-primary/10', icon: <FileText className="h-4 w-4 text-primary" />,  badge: 'text-primary border-primary/20' },
+  distribution: { bg: 'bg-amber-100',  icon: <Send className="h-4 w-4 text-amber-600" />,    badge: 'text-amber-600 border-amber-200' },
 };
 const TYPE_LABEL: Record<ActivityItem['type'], string> = {
-  audit: 'Audit', content: 'Content', publish: 'Published', dist: 'Distribution',
+  audit: 'Audit', content: 'Content', distribution: 'Publish',
 };
 
 export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
@@ -47,39 +46,63 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
     } });
 
   /* ── Row 2 stats ── */
-  const { data: backlinksCount, isLoading: l5 } = useQuery<number>({ queryKey: ['backlinks-count'],
-    queryFn: async () => (await blink.db.table('backlinks').list({ limit: 2000 })).length });
-
-  const { data: publishedCount, isLoading: l6 } = useQuery<number>({ queryKey: ['published-count'],
-    queryFn: async () => (await blink.db.table('content_lab').list({ where: { status: 'published' }, limit: 1000 })).length });
-
-  const { data: platformsCount, isLoading: l7 } = useQuery<number>({ queryKey: ['platforms-count'],
-    queryFn: async () => (await blink.db.table('platform_credentials').list({ limit: 200 })).length });
-
-  const { data: distRate, isLoading: l8 } = useQuery<string>({ queryKey: ['dist-rate'],
+  const { data: backlinksCount, isLoading: l5 } = useQuery<number>({
+    queryKey: ['backlink-count'],
     queryFn: async () => {
-      const logs = await blink.db.table<{ status: string }>('distribution_logs').list({ limit: 1000 });
-      if (!logs.length) return '—';
-      const success = logs.filter(l => l.status === 'success').length;
-      return `${Math.round((success / logs.length) * 100)}%`;
-    } });
+      const rows = await blink.db.table('backlinks').list({ limit: 1000 });
+      return rows.length;
+    },
+  });
+
+  const { data: publishedCount, isLoading: l6 } = useQuery<number>({
+    queryKey: ['published-count'],
+    queryFn: async () => {
+      const rows = await blink.db.table<{ status: string }>('content_lab').list({ limit: 1000 });
+      return rows.filter(r => r.status === 'published').length;
+    },
+  });
+
+  const { data: platformsCount, isLoading: l7 } = useQuery<number>({
+    queryKey: ['platforms-connected-count'],
+    queryFn: async () => {
+      const rows = await blink.db.table('platform_credentials').list({ limit: 100 });
+      return rows.length;
+    },
+  });
+
+  const { data: distRate, isLoading: l8 } = useQuery<string>({
+    queryKey: ['distribution-rate'],
+    queryFn: async () => {
+      const rows = await blink.db.table<{ status: string }>('distribution_logs').list({ limit: 1000 });
+      if (!rows.length) return '—';
+      const success = rows.filter(r => r.status === 'success').length;
+      return `${Math.round((success / rows.length) * 100)}%`;
+    },
+  });
 
   /* ── Recent activity ── */
   const { data: recentActivity = [], isLoading: loadingActivity } = useQuery<ActivityItem[]>({
     queryKey: ['recent-activity-v2'],
     queryFn: async () => {
-      const [audits, generated, published, distLogs] = await Promise.all([
-        blink.db.table<{ id: string; url: string; score: number; createdAt: string }>('audits').list({ orderBy: { createdAt: 'desc' }, limit: 5 }),
-        blink.db.table<{ id: string; title: string; wordCount: number; createdAt: string }>('generated_content').list({ orderBy: { createdAt: 'desc' }, limit: 5 }),
-        blink.db.table<{ id: string; title: string; createdAt: string }>('content_lab').list({ where: { status: 'published' }, orderBy: { createdAt: 'desc' }, limit: 4 }),
-        blink.db.table<{ id: string; platform: string; status: string; createdAt: string }>('distribution_logs').list({ orderBy: { createdAt: 'desc' }, limit: 4 }),
+      const [audits, content, distLogs] = await Promise.all([
+        blink.db.table<{ id: string; url: string; score: number; createdAt: string }>('audits').list({
+          orderBy: { createdAt: 'desc' }, limit: 5,
+        }),
+        blink.db.table<{ id: string; title: string; wordCount: number; createdAt: string }>('generated_content').list({
+          orderBy: { createdAt: 'desc' }, limit: 5,
+        }),
+        blink.db.table<{ id: string; platform: string; status: string; createdAt: string }>('distribution_logs').list({
+          orderBy: { createdAt: 'desc' }, limit: 5,
+        }),
       ]);
-      return [
-        ...audits.map(a => ({ type: 'audit'   as const, label: a.url,                meta: `Score: ${a.score}/100`,    date: a.createdAt })),
-        ...generated.map(c => ({ type: 'content' as const, label: c.title,             meta: `${Number(c.wordCount).toLocaleString()} words`, date: c.createdAt })),
-        ...published.map(p => ({ type: 'publish' as const, label: p.title,             meta: 'Published to platforms',  date: p.createdAt })),
-        ...distLogs.map(d => ({ type: 'dist'    as const, label: `Distributed: ${d.platform}`, meta: d.status,         date: d.createdAt })),
-      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
+
+      const combined = [
+        ...audits.map(a => ({ type: 'audit' as const, label: a.url, meta: `Score: ${a.score}/100`, date: a.createdAt })),
+        ...content.map(c => ({ type: 'content' as const, label: c.title, meta: `${Number(c.wordCount).toLocaleString()} words`, date: c.createdAt })),
+        ...distLogs.map(d => ({ type: 'distribution' as const, label: `Published to ${d.platform}`, meta: d.status === 'success' ? '✓ Success' : '✗ Failed', date: d.createdAt })),
+      ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 6);
+
+      return combined;
     },
   });
 
@@ -97,10 +120,30 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
 
       {/* Row 2 — Extended stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Link2 className="h-5 w-5 text-violet-500" />}     label="Backlinks Found"    value={l5 ? null : String(backlinksCount ?? 0)}       cta="View Backlinks" onCta={() => onNavigate('backlinks')} />
-        <StatCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Content Published" value={l6 ? null : String(publishedCount ?? 0)}     cta="Go to Lab"      onCta={() => onNavigate('content')} />
-        <StatCard icon={<Plug className="h-5 w-5 text-primary" />}         label="Platforms Connected" value={l7 ? null : String(platformsCount ?? 0)}      cta="Settings"       onCta={() => onNavigate('settings')} />
-        <StatCard icon={<Share2 className="h-5 w-5 text-amber-500" />}     label="Distribution Rate"  value={l8 ? null : String(distRate ?? '—')}           cta="Distribution"   onCta={() => onNavigate('distribution')} />
+        <StatCard
+          icon={<Link2 className="h-5 w-5 text-blue-500" />}
+          label="Total Backlinks"
+          value={l5 ? null : String(backlinksCount ?? 0)}
+          cta={!backlinksCount ? 'Analyze' : undefined}
+          onCta={!backlinksCount ? () => onNavigate('backlinks') : undefined}
+        />
+        <StatCard
+          icon={<Send className="h-5 w-5 text-emerald-500" />}
+          label="Published"
+          value={l6 ? null : String(publishedCount ?? 0)}
+        />
+        <StatCard
+          icon={<Plug className="h-5 w-5 text-primary" />}
+          label="Platforms"
+          value={l7 ? null : String(platformsCount ?? 0)}
+          cta={!platformsCount ? 'Connect' : undefined}
+          onCta={!platformsCount ? () => onNavigate('settings') : undefined}
+        />
+        <StatCard
+          icon={<TrendingUp className="h-5 w-5 text-amber-500" />}
+          label="Dist. Rate"
+          value={l8 ? null : (distRate ?? '—')}
+        />
       </div>
 
       {/* Recent Activity */}

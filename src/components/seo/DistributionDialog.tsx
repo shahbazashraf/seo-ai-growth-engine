@@ -104,6 +104,7 @@ export function DistributionDialog({ open, onOpenChange, contentId, onPublished 
         });
       } else {
         await blink.db.table<PlatformCredential>('platform_credentials').create({
+          userId: '',
           platformName,
           credentials: JSON.stringify({ apiKey: key }),
           connectedAt: new Date().toISOString(),

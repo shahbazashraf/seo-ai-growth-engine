@@ -200,8 +200,9 @@ export const BacklinksManager = () => {
       });
       if (!existingSites.length) {
         await blink.db.table<SiteRecord>('sites').create({
+          userId: '',
           url,
-          isPrimary: 0,
+          isPrimary: '0',
           lastAuditAt: null,
         });
       }
@@ -230,11 +231,12 @@ export const BacklinksManager = () => {
       await Promise.all(
         (data.backlinks || []).map(bl =>
           blink.db.table<BacklinkRecord>('backlinks').create({
+            userId: '',
             siteUrl: url,
             sourceUrl: bl.sourceUrl,
-            anchorText: bl.anchorText,
+            anchorText: bl.anchorText || 'Visit Site',
             domainAuthority: bl.domainAuthority,
-            status: bl.status,
+            status: bl.status || 'active',
             foundAt: new Date().toISOString(),
           })
         )
@@ -243,6 +245,7 @@ export const BacklinksManager = () => {
       // Save opportunities as single record (JSON array)
       if (data.opportunities?.length) {
         await blink.db.table<OpportunityRecord>('backlink_opportunities').create({
+          userId: '',
           siteUrl: url,
           opportunityData: JSON.stringify(data.opportunities),
         });

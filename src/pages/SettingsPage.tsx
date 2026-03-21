@@ -251,6 +251,7 @@ export const SettingsPage = () => {
         });
       } else {
         await blink.db.table<PlatformCredential>('platform_credentials').create({
+          userId: '',
           platformName,
           credentials: creds,
           connectedAt: new Date().toISOString(),
@@ -321,8 +322,9 @@ export const SettingsPage = () => {
       const existing = sites.find(s => s.url === url);
       if (existing) { toast.error('This site is already added'); return; }
       await blink.db.table<SiteRecord>('sites').create({
+        userId: '',
         url,
-        isPrimary: sites.length === 0 ? 1 : 0,
+        isPrimary: sites.length === 0 ? '1' : '0',
         lastAuditAt: null,
       });
       setNewSiteUrl('');

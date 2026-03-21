@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
           status: "active"
         };
         
-        await blink.db.table("backlinks").create(backlink);
+        await blink.db.table("backlinks").create({ userId: '', ...backlink });
         backlinks.push(backlink);
       }
 
@@ -72,8 +72,9 @@ Deno.serve(async (req: Request) => {
       const opportunities = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
 
       await blink.db.table("backlink_opportunities").create({
-        site_url: siteUrl,
-        opportunity_data: JSON.stringify(opportunities)
+        userId: '',
+        siteUrl: siteUrl,
+        opportunityData: JSON.stringify(opportunities)
       });
 
       return new Response(JSON.stringify({ backlinks, opportunities }), {

@@ -132,11 +132,12 @@ Deno.serve(async (req: Request) => {
 
       // Log distribution
       await blink.db.table("distribution_logs").create({
+        userId: '',
         contentId,
         platform: name,
         status: success ? "success" : "failed",
-        publishedUrl,
-        error
+        publishedUrl: publishedUrl || '',
+        error: error || ''
       });
 
       results.push({ platform: name, success, url: publishedUrl, error });

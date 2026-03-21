@@ -158,6 +158,7 @@ export function ContentLab({ projectId }: ContentLabProps) {
       }
       return blink.db.table<ContentLabRow>('content_lab').create({
         ...payload,
+        userId: '',
         createdAt: new Date().toISOString(),
       });
     },
