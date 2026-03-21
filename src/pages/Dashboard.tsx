@@ -1,26 +1,61 @@
 import React, { useState } from 'react';
 import {
-  BarChart3, Globe, Search, FileText, Share2,
-  LayoutDashboard, Settings, TrendingUp, Users,
-  Clock, PlusCircle, Zap
+  LayoutDashboard, Globe, FileText, Share2,
+  Zap, Link2, Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { SiteAudit } from '@/components/seo/SiteAudit';
 import { AutomationEngine } from '@/components/seo/AutomationEngine';
 import { ContentLab } from '@/components/seo/ContentLab';
 import { OverviewDashboard } from '@/components/seo/OverviewDashboard';
+import { BacklinksManager } from '@/components/seo/BacklinksManager';
+import { SettingsPage } from '@/pages/SettingsPage';
 import { useProjects } from '@/hooks/useData';
 
-type View = 'overview' | 'audit' | 'automation' | 'content' | 'distribution' | 'backlinks' | 'settings';
+type View = 'overview' | 'audit' | 'content' | 'distribution' | 'automation' | 'backlinks' | 'settings';
 
 const NAV: { view: View; icon: React.ReactNode; label: string }[] = [
-  { view: 'overview',      icon: <LayoutDashboard size={18} />, label: 'Overview' },
-  { view: 'audit',         icon: <Globe size={18} />,           label: 'Site Audit' },
-  { view: 'automation',    icon: <Zap size={18} />,             label: 'Automation' },
-  { view: 'content',       icon: <FileText size={18} />,        label: 'Content Lab' },
-  { view: 'distribution',  icon: <Share2 size={18} />,          label: 'Distribution' },
-  { view: 'backlinks',     icon: <Users size={18} />,           label: 'Backlinks' },
+  { view: 'overview',     icon: <LayoutDashboard size={18} />, label: 'Overview' },
+  { view: 'audit',        icon: <Globe size={18} />,           label: 'Site Audit' },
+  { view: 'content',      icon: <FileText size={18} />,        label: 'Content Lab' },
+  { view: 'distribution', icon: <Share2 size={18} />,          label: 'Distribution' },
+  { view: 'automation',   icon: <Zap size={18} />,             label: 'Automation' },
+  { view: 'backlinks',    icon: <Link2 size={18} />,           label: 'Backlinks' },
+  { view: 'settings',     icon: <Settings size={18} />,        label: 'Settings' },
 ];
+
+const VIEW_TITLE: Record<View, string> = {
+  overview:     'Overview',
+  audit:        'Site Audit',
+  content:      'Content Lab',
+  distribution: 'Distribution',
+  automation:   'AI Automation Engine',
+  backlinks:    'Backlinks',
+  settings:     'Settings',
+};
+
+const DistributionPlaceholder = ({ onNavigate }: { onNavigate: (v: View) => void }) => (
+  <div className="flex items-center justify-center min-h-[400px]">
+    <Card className="max-w-md w-full border-dashed border-2">
+      <CardContent className="py-12 text-center space-y-4">
+        <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+          <Share2 className="h-7 w-7 text-primary" />
+        </div>
+        <div>
+          <p className="font-semibold text-lg">Distribution via Content Lab</p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
+            Distribution is available via the Content Lab → Publish button. Navigate to Content Lab and click
+            <span className="text-primary font-medium"> Publish</span> on any saved content.
+          </p>
+        </div>
+        <Button onClick={() => onNavigate('content')} className="gap-2 shadow-sm shadow-primary/20">
+          <FileText className="h-4 w-4" /> Go to Content Lab
+        </Button>
+      </CardContent>
+    </Card>
+  </div>
+);
 
 export const Dashboard = () => {
   const [active, setActive] = useState<View>('overview');
@@ -29,32 +64,14 @@ export const Dashboard = () => {
 
   const renderContent = () => {
     switch (active) {
-      case 'overview':
-        return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
-      case 'audit':
-        return <SiteAudit />;
-      case 'automation':
-        return <AutomationEngine />;
-      case 'content':
-        return <ContentLab projectId={projectId} />;
-      default:
-        return (
-          <div className="h-[400px] flex flex-col items-center justify-center border-2 border-dashed rounded-xl text-muted-foreground gap-3">
-            <span className="text-4xl opacity-20">🚧</span>
-            <p className="font-medium capitalize">{active} — Coming Soon</p>
-          </div>
-        );
+      case 'overview':     return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
+      case 'audit':        return <SiteAudit />;
+      case 'content':      return <ContentLab projectId={projectId} />;
+      case 'distribution': return <DistributionPlaceholder onNavigate={setActive} />;
+      case 'automation':   return <AutomationEngine />;
+      case 'backlinks':    return <BacklinksManager />;
+      case 'settings':     return <SettingsPage />;
     }
-  };
-
-  const VIEW_TITLE: Record<View, string> = {
-    overview: 'Overview',
-    audit: 'Site Audit',
-    automation: 'AI Automation Engine',
-    content: 'Content Lab',
-    distribution: 'Distribution',
-    backlinks: 'Backlinks',
-    settings: 'Settings',
   };
 
   return (
@@ -84,18 +101,7 @@ export const Dashboard = () => {
         </nav>
 
         <div className="p-3 border-t">
-          <button
-            onClick={() => setActive('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-              active === 'settings'
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-            }`}
-          >
-            <Settings size={18} /> Settings
-          </button>
-
-          <div className="mt-3 p-3 bg-primary/5 rounded-xl border border-primary/10">
+          <div className="p-3 bg-primary/5 rounded-xl border border-primary/10">
             <p className="text-xs font-semibold text-primary mb-1">FREE PLAN</p>
             <p className="text-xs text-muted-foreground">Unlimited audits &amp; generation</p>
           </div>
