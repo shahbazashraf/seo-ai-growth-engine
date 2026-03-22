@@ -112,10 +112,27 @@ export function ContentLab({ projectId }: ContentLabProps) {
       setKeywords(data.keywords ?? []);
       setImagePrompts(data.imagePrompts ?? []);
       setGenerated(true);
-      // Auto-fetch first image prompt
-      if (data.imagePrompts?.length) {
-        await fetchImage(data.imagePrompts[0], 0);
-      }
+
+      // Auto-add Unsplash images based on keywords
+      const kws = data.keywords ?? [];
+      const heroKw = kws[0]?.toLowerCase().replace(/\s+/g, ',') || 'technology';
+      const inlineKw = kws[1]?.toLowerCase().replace(/\s+/g, ',') || 'business';
+
+      const heroUrl = `https://source.unsplash.com/1200x630/?${heroKw}`;
+      const inlineUrl = `https://source.unsplash.com/800x400/?${inlineKw}`;
+
+      setImageUrls([heroUrl, inlineUrl]);
+
+      // Also auto-insert hero image into content
+      const heroMarkdown = `\n\n![Hero Image](${heroUrl})\n\n`;
+      setContent(prev => {
+        // Insert hero image after the first heading (or at the start)
+        const firstHeadingEnd = prev.indexOf('\n\n');
+        if (firstHeadingEnd > -1) {
+          return prev.slice(0, firstHeadingEnd) + heroMarkdown + prev.slice(firstHeadingEnd);
+        }
+        return heroMarkdown + prev;
+      });
     },
     onError: (e) => toast.error(e.message),
   });
@@ -123,17 +140,19 @@ export function ContentLab({ projectId }: ContentLabProps) {
   const fetchImage = async (prompt: string, idx: number) => {
     setAddingImageIdx(idx);
     try {
-      const token = await blink.auth.getValidToken();
-      const res = await fetch(`${CONTENT_ENGINE}/image`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ prompt }),
+      // Use Unsplash source for reliable, free images based on keywords
+      const keyword = prompt.split(' ').slice(0, 3).join(',').toLowerCase().replace(/[^a-z0-9,]/g, '');
+      const sizes = idx === 0 ? '1200x630' : '800x400';
+      const testUrl = `https://source.unsplash.com/${sizes}/?${keyword}`;
+      setImageUrls(prev => {
+        const filtered = prev.filter((_, i) => i !== idx);
+        const newUrls = [...filtered];
+        newUrls[idx] = testUrl;
+        return newUrls.filter(Boolean);
       });
-      if (!res.ok) throw new Error('Image fetch failed');
-      const data = await res.json();
-      if (data.url) setImageUrls(prev => [...prev.filter(u => u !== data.url), data.url]);
+      toast.success('Image added!');
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : 'Image generation failed');
+      toast.error(e instanceof Error ? e.message : 'Image fetch failed');
     } finally {
       setAddingImageIdx(null);
     }
@@ -234,11 +253,11 @@ export function ContentLab({ projectId }: ContentLabProps) {
         </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as typeof tab)} className="w-full">
-          <TabsList className="bg-secondary/50 border border-primary/5 mb-6">
-            <TabsTrigger value="create" className="flex items-center gap-2">
+          <TabsList className="bg-transparent border-b border-border mb-6 rounded-none p-0 h-auto w-full justify-start gap-0">
+            <TabsTrigger value="create" className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground">
               <Sparkles className="h-4 w-4" /> Create
             </TabsTrigger>
-            <TabsTrigger value="my-content" className="flex items-center gap-2">
+            <TabsTrigger value="my-content" className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground">
               <FileText className="h-4 w-4" /> My Content
               {contentList.length > 0 && (
                 <Badge className="ml-1 h-5 min-w-5 flex items-center justify-center rounded-full bg-primary/15 text-primary border-none text-[10px]">

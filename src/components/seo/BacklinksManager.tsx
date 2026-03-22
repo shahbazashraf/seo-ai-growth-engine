@@ -369,8 +369,8 @@ export const BacklinksManager = () => {
 
       {/* ── Tabs ── */}
       <Tabs defaultValue="backlinks">
-        <TabsList className="grid w-full max-w-sm grid-cols-2">
-          <TabsTrigger value="backlinks" className="gap-1.5">
+        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto w-full justify-start gap-0 max-w-sm">
+          <TabsTrigger value="backlinks" className="gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground flex items-center">
             <Link2 className="h-3.5 w-3.5" />
             Your Backlinks
             {totalBacklinks > 0 && (
@@ -379,7 +379,7 @@ export const BacklinksManager = () => {
               </span>
             )}
           </TabsTrigger>
-          <TabsTrigger value="opportunities" className="gap-1.5">
+          <TabsTrigger value="opportunities" className="gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground flex items-center">
             <Target className="h-3.5 w-3.5" />
             Opportunities
             {opportunities.length > 0 && (

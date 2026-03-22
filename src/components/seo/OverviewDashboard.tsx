@@ -2,7 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Globe, FileText, Zap, Activity, ArrowRight,
-  Link2, Send, Settings, Plug, CheckCircle2, TrendingUp,
+  Link2, Send, Plug, TrendingUp,
 } from 'lucide-react';
 import { blink } from '@/blink/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -198,10 +198,10 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
       {/* Quick Actions */}
       <div className="grid md:grid-cols-2 gap-4">
         {([
-          { view: 'audit',      icon: <Globe className="h-6 w-6 text-primary" />,       title: 'Run a Site Audit',        desc: 'Analyze any URL for SEO issues in seconds.' },
-          { view: 'automation', icon: <Zap className="h-6 w-6 text-primary" />,         title: 'Generate SEO Content',    desc: 'Create an 800+ word optimized blog post with AI.' },
-          { view: 'backlinks',  icon: <Link2 className="h-6 w-6 text-violet-500" />,    title: 'Analyze Backlinks',       desc: 'View and monitor backlinks discovered during audits.' },
-          { view: 'settings',   icon: <Settings className="h-6 w-6 text-primary" />,    title: 'Settings',                desc: 'Configure platforms, automation, and notifications.' },
+          { view: 'audit',        icon: <Globe className="h-6 w-6 text-primary" />,        title: 'Run a Site Audit',        desc: 'Analyze any URL for SEO issues in seconds.' },
+          { view: 'automation',   icon: <Zap className="h-6 w-6 text-primary" />,          title: 'Generate SEO Content',    desc: 'Create an 800+ word optimized blog post with AI.' },
+          { view: 'distribution', icon: <Send className="h-6 w-6 text-emerald-500" />,     title: 'Distribution Engine',     desc: 'Publish to Dev.to, Medium, 15+ platforms at once.' },
+          { view: 'backlinks',    icon: <Link2 className="h-6 w-6 text-violet-500" />,     title: 'Analyze Backlinks',       desc: 'Discover and track backlinks to your site.' },
         ] as const).map(({ view, icon, title, desc }) => (
           <Card key={view} className="cursor-pointer hover:border-primary/40 hover:shadow-md transition-all group" onClick={() => onNavigate(view)}>
             <CardContent className="flex items-center gap-4 py-5">

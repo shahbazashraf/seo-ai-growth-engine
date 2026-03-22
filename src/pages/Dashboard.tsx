@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Globe, FileText, LayoutDashboard, Settings,
-  Link2, Zap,
+  Link2, Zap, Send,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SiteAudit } from '@/components/seo/SiteAudit';
@@ -9,26 +9,29 @@ import { AutomationEngine } from '@/components/seo/AutomationEngine';
 import { ContentLab } from '@/components/seo/ContentLab';
 import { OverviewDashboard } from '@/components/seo/OverviewDashboard';
 import { BacklinksManager } from '@/components/seo/BacklinksManager';
+import { DistributionEngine } from '@/components/seo/DistributionEngine';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { useProjects } from '@/hooks/useData';
 
-type View = 'overview' | 'audit' | 'automation' | 'content' | 'backlinks' | 'settings';
+type View = 'overview' | 'audit' | 'automation' | 'content' | 'backlinks' | 'distribution' | 'settings';
 
 const NAV: { view: View; icon: React.ReactNode; label: string }[] = [
-  { view: 'overview',   icon: <LayoutDashboard size={18} />, label: 'Overview' },
-  { view: 'audit',      icon: <Globe size={18} />,           label: 'Site Audit' },
-  { view: 'automation', icon: <Zap size={18} />,             label: 'Automation' },
-  { view: 'content',    icon: <FileText size={18} />,        label: 'Content Lab' },
-  { view: 'backlinks',  icon: <Link2 size={18} />,           label: 'Backlinks' },
+  { view: 'overview',      icon: <LayoutDashboard size={18} />, label: 'Overview' },
+  { view: 'audit',         icon: <Globe size={18} />,           label: 'Site Audit' },
+  { view: 'content',       icon: <FileText size={18} />,        label: 'Content Lab' },
+  { view: 'distribution',  icon: <Send size={18} />,            label: 'Distribution' },
+  { view: 'automation',    icon: <Zap size={18} />,             label: 'Automation' },
+  { view: 'backlinks',     icon: <Link2 size={18} />,           label: 'Backlinks' },
 ];
 
 const VIEW_TITLE: Record<View, string> = {
-  overview:   'Overview',
-  audit:      'Site Audit',
-  automation: 'AI Automation Engine',
-  content:    'Content Lab',
-  backlinks:  'Backlinks Manager',
-  settings:   'Settings',
+  overview:     'Overview',
+  audit:        'Site Audit',
+  automation:   'AI Automation Engine',
+  content:      'Content Lab',
+  backlinks:    'Backlinks Manager',
+  distribution: 'Distribution Engine',
+  settings:     'Settings',
 };
 
 export const Dashboard = () => {
@@ -42,8 +45,9 @@ export const Dashboard = () => {
       case 'audit':      return <SiteAudit />;
       case 'automation': return <AutomationEngine />;
       case 'content':    return <ContentLab projectId={projectId} />;
-      case 'backlinks':  return <BacklinksManager />;
-      case 'settings':   return <SettingsPage />;
+      case 'backlinks':     return <BacklinksManager />;
+      case 'distribution':  return <DistributionEngine />;
+      case 'settings':      return <SettingsPage />;
       default:           return null;
     }
   };

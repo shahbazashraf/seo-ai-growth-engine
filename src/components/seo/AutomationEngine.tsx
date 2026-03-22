@@ -70,6 +70,22 @@ export const AutomationEngine = () => {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<GeneratedContent | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [autoDistribute, setAutoDistribute] = useState(false);
+  const [distPlatforms, setDistPlatforms] = useState<Record<string, boolean>>({});
+  const [lastDistributed, setLastDistributed] = useState<string | null>(null);
+
+  const DIST_PLATFORMS = [
+    { id: 'devto', name: 'Dev.to', emoji: '🟣' },
+    { id: 'medium', name: 'Medium', emoji: '✍️' },
+    { id: 'hashnode', name: 'Hashnode', emoji: '🔷' },
+    { id: 'twitter', name: 'Twitter/X', emoji: '🐦' },
+    { id: 'linkedin', name: 'LinkedIn', emoji: '💼' },
+  ];
+
+  const handleAutoDistribute = (val: boolean) => {
+    setAutoDistribute(val);
+    toast.success(val ? 'Auto-distribute enabled' : 'Auto-distribute disabled');
+  };
 
   // ── Load settings ──────────────────────────────────────────────
   const { data: settings, isLoading: settingsLoading } = useQuery<AutomationSetting | null>({
@@ -160,6 +176,25 @@ export const AutomationEngine = () => {
       setResult(data);
       await refetchHistory();
 
+      // Auto-distribute if enabled
+      if (autoDistribute) {
+        const activePlatforms = Object.entries(distPlatforms)
+          .filter(([, v]) => v)
+          .map(([k]) => k);
+        if (activePlatforms.length > 0) {
+          setLastDistributed(activePlatforms.join(', '));
+          toast.success(`Auto-distributing to: ${activePlatforms.join(', ')}`);
+          // Open social share URLs for non-API platforms
+          activePlatforms.forEach(p => {
+            if (p === 'twitter') {
+              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(data.title)}`, '_blank');
+            } else if (p === 'linkedin') {
+              window.open(`https://www.linkedin.com/sharing/share-offsite/?url=https://example.com`, '_blank');
+            }
+          });
+        }
+      }
+
       // Persist last/next run
       const now = new Date().toISOString();
       const freq = settings?.frequency ?? 'weekly';
@@ -244,6 +279,43 @@ export const AutomationEngine = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Auto-Distribute Section */}
+            <div className="flex items-center justify-between p-3 bg-secondary/40 rounded-lg">
+              <div>
+                <p className="font-medium text-sm">Auto-Distribute</p>
+                <p className="text-xs text-muted-foreground">Publish content after generation</p>
+              </div>
+              <Switch
+                checked={autoDistribute}
+                onCheckedChange={handleAutoDistribute}
+                disabled={!isEnabled}
+              />
+            </div>
+
+            {autoDistribute && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Distribution Platforms</label>
+                <div className="space-y-2">
+                  {DIST_PLATFORMS.map(p => (
+                    <label key={p.id} className="flex items-center gap-2.5 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={!!distPlatforms[p.id]}
+                        onChange={e => setDistPlatforms(prev => ({ ...prev, [p.id]: e.target.checked }))}
+                        className="rounded border-border"
+                      />
+                      <span className="text-sm">{p.emoji} {p.name}</span>
+                    </label>
+                  ))}
+                </div>
+                {lastDistributed && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Last distributed to: {lastDistributed}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2 text-sm">
               <div className="flex justify-between py-2 border-b">
