@@ -114,7 +114,7 @@ const PLATFORMS: PlatformDef[] = [
   {
     id: 'tumblr', name: 'Tumblr', emoji: '🎭', tier: 'social',
     description: 'Post to Tumblr',
-    shareUrl: (title) => `https://www.tumblr.com/new/text?title=${encodeURIComponent(title)}`,
+    shareUrl: (title, url) => `https://www.tumblr.com/new/text?title=${encodeURIComponent(title)}&body=${encodeURIComponent(url || title)}`,
   },
   {
     id: 'mix', name: 'Mix', emoji: '🔀', tier: 'social',
@@ -130,7 +130,7 @@ const PLATFORMS: PlatformDef[] = [
   {
     id: 'blogger', name: 'Blogger', emoji: '📝', tier: 'submit',
     description: 'Publish to Google Blogger',
-    submitUrl: 'https://www.blogger.com/blog-this.g',
+    submitUrl: 'https://www.blogger.com/blog-this.g?t=',
   },
   {
     id: 'vocal', name: 'Vocal Media', emoji: '🎙️', tier: 'submit',
@@ -156,6 +156,16 @@ const PLATFORMS: PlatformDef[] = [
     id: 'steemit', name: 'Steemit', emoji: '⛓️', tier: 'submit',
     description: 'Post on Steemit blockchain blog',
     submitUrl: 'https://steemit.com/',
+  },
+  {
+    id: 'ezine', name: 'EzineArticles', emoji: '📋', tier: 'submit',
+    description: 'Submit to EzineArticles directory',
+    submitUrl: 'https://ezinearticles.com/submit/',
+  },
+  {
+    id: 'wordpress', name: 'WordPress.com', emoji: '🌐', tier: 'submit',
+    description: 'Post on WordPress.com (paste content)',
+    submitUrl: 'https://wordpress.com/post/new',
   },
 ];
 
@@ -345,7 +355,12 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
       if (platform.tier === 'social' && platform.shareUrl) {
         window.open(platform.shareUrl(title, url), '_blank');
       } else if (platform.tier === 'submit' && platform.submitUrl) {
-        window.open(platform.submitUrl, '_blank');
+        const contentSlice = content.content?.slice(0, 500) || '';
+        let targetUrl = platform.submitUrl;
+        if (platform.id === 'blogger' && contentSlice) {
+          targetUrl = `https://www.blogger.com/blog-this.g?t=${encodeURIComponent(contentSlice)}&n=${encodeURIComponent(title)}`;
+        }
+        window.open(targetUrl, '_blank');
       }
 
       count++;
@@ -646,7 +661,14 @@ export function DistributionEngine() {
         try {
           await navigator.clipboard.writeText(selectedContent?.content || '');
         } catch { /* ignore */ }
-        window.open(platform.submitUrl, '_blank');
+        const titleForUrl = selectedContent?.title || '';
+        const contentSlice = selectedContent?.content?.slice(0, 500) || '';
+        let targetUrl = platform.submitUrl;
+        // Blogger supports pre-filled content via URL params
+        if (id === 'blogger' && contentSlice) {
+          targetUrl = `https://www.blogger.com/blog-this.g?t=${encodeURIComponent(contentSlice)}&n=${encodeURIComponent(titleForUrl)}`;
+        }
+        window.open(targetUrl, '_blank');
         newResults.push({ platform: id, status: 'opened' });
         await logDistribution(selectedContentId, id, 'opened');
       }

@@ -17,28 +17,31 @@ Deno.serve(async (req: Request) => {
   });
 
   try {
-    const { contentId, platforms } = await req.json();
-    if (!contentId || !platforms) throw new Error("Missing parameters");
+    const body = await req.json();
+    const { contentId, platforms } = body;
+    if (!contentId || !platforms) throw new Error("Missing contentId or platforms");
 
     // Fetch content — try content_lab first, fall back to generated_content
     let content: any = null;
+    
     try {
-      content = await blink.db.table("content_lab").get(contentId);
-    } catch {
-      // not found in content_lab
+      const rows = await blink.db.table("content_lab").list({ where: { id: contentId }, limit: 1 });
+      if (rows && rows.length > 0) content = rows[0];
+    } catch (e: any) {
+      console.log("content_lab lookup failed:", e.message);
     }
 
     if (!content) {
       try {
-        content = await blink.db.table("generated_content").get(contentId);
-      } catch {
-        // not found in generated_content either
+        const rows = await blink.db.table("generated_content").list({ where: { id: contentId }, limit: 1 });
+        if (rows && rows.length > 0) content = rows[0];
+      } catch (e: any) {
+        console.log("generated_content lookup failed:", e.message);
       }
     }
 
-    if (!content) throw new Error("Content not found in any table");
+    if (!content) throw new Error("Content not found");
 
-    // Normalise field names — SDK returns camelCase; DB columns are snake_case
     const contentTitle = content.title || "Untitled";
     const contentBody = content.content || "";
     const metaDesc = content.metaDescription || content.meta_description || "";
@@ -53,19 +56,15 @@ Deno.serve(async (req: Request) => {
 
       try {
         if (name === "devto") {
-          // Dev.to tags must be lowercase, no spaces, max 4
           const tags = config?.tags
-            ? config.tags
-                .split(",")
-                .map((t: string) => t.trim().toLowerCase().replace(/\s+/g, ""))
-                .slice(0, 4)
+            ? config.tags.split(",").map((t: string) => t.trim().toLowerCase().replace(/\s+/g, "")).slice(0, 4)
             : [];
 
           const res = await fetch("https://dev.to/api/articles", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "api-key": credentials.apiKey,
+              "api-key": credentials?.apiKey || "",
             },
             body: JSON.stringify({
               article: {
@@ -80,52 +79,44 @@ Deno.serve(async (req: Request) => {
           const data = await res.json();
           if (res.ok) {
             success = true;
-            publishedUrl = data.url || `https://dev.to/api/articles/${data.id}`;
+            publishedUrl = data.url || `https://dev.to`;
           } else {
-            error = data.error || data.message || "Failed to publish to Dev.to";
+            error = data.error || data.message || `Dev.to responded with ${res.status}`;
           }
         } else if (name === "medium") {
-          // Medium needs the author ID from /me before posting
+          const token = credentials?.token || credentials?.apiKey || "";
           const userRes = await fetch("https://api.medium.com/v1/me", {
-            headers: {
-              Authorization: `Bearer ${credentials.token || credentials.apiKey}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           });
           const userData = await userRes.json();
 
           if (userRes.ok && userData.data?.id) {
-            const res = await fetch(
-              `https://api.medium.com/v1/users/${userData.data.id}/posts`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${credentials.token || credentials.apiKey}`,
-                },
-                body: JSON.stringify({
-                  title: contentTitle,
-                  contentFormat: "markdown",
-                  content: contentBody,
-                  publishStatus: "public",
-                  tags: [],
-                }),
-              }
-            );
+            const res = await fetch(`https://api.medium.com/v1/users/${userData.data.id}/posts`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                title: contentTitle,
+                contentFormat: "markdown",
+                content: contentBody,
+                publishStatus: "public",
+                tags: [],
+              }),
+            });
             const data = await res.json();
             if (res.ok && data.data?.url) {
               success = true;
               publishedUrl = data.data.url;
             } else {
-              error =
-                "Failed to publish to Medium: " +
-                (data.errors?.[0]?.message || JSON.stringify(data));
+              error = "Failed to publish to Medium: " + (data.errors?.[0]?.message || JSON.stringify(data).slice(0, 100));
             }
           } else {
             error = "Invalid Medium token — could not fetch user ID";
           }
         } else if (name === "hashnode") {
-          // Hashnode v2 API requires a publicationId
-          const publicationId = credentials.publicationId || credentials.blogId;
+          const publicationId = credentials?.publicationId || credentials?.blogId;
           if (!publicationId) {
             error = "Hashnode requires a Publication ID. Add it in Settings.";
           } else {
@@ -133,15 +124,12 @@ Deno.serve(async (req: Request) => {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: credentials.apiKey,
+                Authorization: credentials?.apiKey || "",
               },
               body: JSON.stringify({
                 query: `mutation PublishPost($input: PublishPostInput!) {
                   publishPost(input: $input) {
-                    post {
-                      url
-                      title
-                    }
+                    post { url title }
                   }
                 }`,
                 variables: {
@@ -159,19 +147,16 @@ Deno.serve(async (req: Request) => {
               success = true;
               publishedUrl = data.data.publishPost.post.url;
             } else {
-              error =
-                data.errors?.[0]?.message || "Failed to publish to Hashnode";
+              error = data.errors?.[0]?.message || "Failed to publish to Hashnode";
             }
           }
         } else {
-          // Social / unsupported platforms — mark as handled so callers can
-          // open the share URL on the client side without a hard error
+          // Social / submit platforms — client handles opening URLs
           success = true;
           publishedUrl = "";
-          error = "";
         }
       } catch (err: any) {
-        error = err.message;
+        error = err.message || "Unknown error";
       }
 
       // Log the distribution attempt
@@ -192,29 +177,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // Update content_lab status when at least one platform succeeded
-    const successCount = results.filter(r => r.success).length;
+    const successCount = results.filter(r => r.success && r.platform !== "twitter" && r.platform !== "linkedin").length;
     if (successCount > 0) {
       try {
         const successfulPlatforms = results
           .filter(r => r.success)
-          .reduce(
-            (acc, curr) => ({ ...acc, [curr.platform]: curr.url || true }),
-            {} as Record<string, any>
-          );
+          .reduce((acc: any, curr) => ({ ...acc, [curr.platform]: curr.url || true }), {});
 
         let currentPublished: Record<string, any> = {};
         try {
-          currentPublished = JSON.parse(
-            content.platformsPublished || content.platforms_published || "{}"
-          );
-        } catch { /* ignore parse error */ }
+          currentPublished = JSON.parse(content.platformsPublished || content.platforms_published || "{}");
+        } catch { /* ignore */ }
 
         await blink.db.table("content_lab").update(contentId, {
           status: "published",
-          platformsPublished: JSON.stringify({
-            ...currentPublished,
-            ...successfulPlatforms,
-          }),
+          platformsPublished: JSON.stringify({ ...currentPublished, ...successfulPlatforms }),
         });
       } catch (updateErr: any) {
         console.error("Failed to update content_lab status:", updateErr.message);

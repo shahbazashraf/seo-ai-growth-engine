@@ -49,7 +49,7 @@ interface SiteRecord {
   id: string;
   userId: string;
   url: string;
-  isPrimary: number;
+  isPrimary: number | string;
   lastAuditAt: string | null;
   createdAt: string;
 }
@@ -202,7 +202,7 @@ export const BacklinksManager = () => {
         await blink.db.table<SiteRecord>('sites').create({
           userId: '',
           url,
-          isPrimary: '0',
+          isPrimary: 0,
           lastAuditAt: null,
         });
       }

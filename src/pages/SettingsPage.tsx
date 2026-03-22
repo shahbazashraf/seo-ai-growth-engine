@@ -324,7 +324,7 @@ export const SettingsPage = () => {
       await blink.db.table<SiteRecord>('sites').create({
         userId: '',
         url,
-        isPrimary: sites.length === 0 ? '1' : '0',
+        isPrimary: sites.length === 0 ? 1 : 0,
         lastAuditAt: null,
       });
       setNewSiteUrl('');
@@ -414,6 +414,7 @@ export const SettingsPage = () => {
       } else {
         await blink.db.table<AutomationSetting>('automation_settings').create({
           ...payload,
+          userId: '',
           lastRun: null,
           nextRun: null,
         });
