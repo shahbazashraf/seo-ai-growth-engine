@@ -82,7 +82,7 @@ Deno.serve(async (req: Request) => {
       if (backlinks.length === 0) {
         try {
           const { text: blText } = await blink.ai.generateText({
-            model: "google/gemini-3-flash",
+            model: "google/gemini-1.5-flash",
             prompt: `For a website at ${siteUrl}, generate 5 realistic backlink examples that such a site might have. Return ONLY a JSON array (no markdown):
 [{
   "sourceUrl": "https://example.com/article-linking-to-you",
@@ -105,7 +105,7 @@ Deno.serve(async (req: Request) => {
       let opportunities: any[] = [];
       try {
         const { text: oppsText } = await blink.ai.generateText({
-          model: "google/gemini-3-flash",
+          model: "google/gemini-1.5-flash",
           prompt: `For a website at ${siteUrl}, suggest 8 specific link-building opportunities. Return ONLY a JSON array (no markdown, no explanation):
 [{
   "siteName": "Example Site",
@@ -144,7 +144,7 @@ Deno.serve(async (req: Request) => {
       const { opportunity, contentTitle, siteUrl } = await req.json();
 
       const { text } = await blink.ai.generateText({
-        model: "google/gemini-3-flash",
+        model: "google/gemini-1.5-flash",
         prompt: `Write a personalized outreach email to get a backlink from ${opportunity.siteName} (${opportunity.url}) for the website ${siteUrl}. The content piece is titled "${contentTitle}". Make it professional, concise, and compelling. Return plain text email only.`,
       });
 

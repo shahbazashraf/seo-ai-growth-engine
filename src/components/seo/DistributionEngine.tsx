@@ -487,7 +487,7 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function DistributionEngine() {
+export function DistributionEngine({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const queryClient = useQueryClient();
 
   // Selection state
@@ -503,7 +503,7 @@ export function DistributionEngine() {
   // ── Data fetching ──────────────────────────────────────────────────────────
 
   const { data: contentList = [], isLoading: loadingContent } = useQuery<ContentLabRow[]>({
-    queryKey: ['content_lab_list'],
+    queryKey: ['content_lab'],
     queryFn: () =>
       blink.db.table<ContentLabRow>('content_lab').list({ orderBy: { createdAt: 'desc' } }),
   });
@@ -734,30 +734,41 @@ export function DistributionEngine() {
 
         <div className="p-5 space-y-5">
           {/* Content selector */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Select Content</Label>
-            <div className="relative">
-              <select
-                value={selectedContentId}
-                onChange={e => setSelectedContentId(e.target.value)}
-                disabled={loadingContent}
-                className="w-full h-10 pl-3 pr-8 rounded-lg border border-input bg-background text-sm text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors disabled:opacity-60"
-              >
-                <option value="">
-                  {loadingContent ? 'Loading content…' : '— Choose content to publish —'}
-                </option>
-                {contentList.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.title || 'Untitled'} ({c.wordCount ?? 0} words)
+          <div className="space-y-1.5 flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1 space-y-1.5">
+              <Label className="text-sm font-medium">Select Content</Label>
+              <div className="relative">
+                <select
+                  value={selectedContentId}
+                  onChange={e => setSelectedContentId(e.target.value)}
+                  disabled={loadingContent}
+                  className="w-full h-10 pl-3 pr-8 rounded-lg border border-input bg-background text-sm text-foreground appearance-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-colors disabled:opacity-60"
+                >
+                  <option value="">
+                    {loadingContent ? 'Loading content…' : '— Choose content to publish —'}
                   </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  {contentList.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.title || 'Untitled'} ({c.wordCount ?? 0} words)
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              </div>
+              {selectedContent && (
+                <p className="text-xs text-muted-foreground truncate">
+                  📄 {selectedContent.metaDescription || 'No meta description'}
+                </p>
+              )}
             </div>
-            {selectedContent && (
-              <p className="text-xs text-muted-foreground truncate">
-                📄 {selectedContent.metaDescription || 'No meta description'}
-              </p>
+            {onNavigate && (
+              <Button
+                variant="outline"
+                className="h-10 shrink-0 shadow-sm border-primary/20 text-primary hover:bg-primary/5"
+                onClick={() => onNavigate('content')}
+              >
+                Create New Content
+              </Button>
             )}
           </div>
 

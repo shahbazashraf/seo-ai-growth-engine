@@ -46,7 +46,7 @@ export const Dashboard = () => {
       case 'automation': return <AutomationEngine />;
       case 'content':    return <ContentLab projectId={projectId} />;
       case 'backlinks':     return <BacklinksManager />;
-      case 'distribution':  return <DistributionEngine />;
+      case 'distribution':  return <DistributionEngine onNavigate={(v) => setActive(v as View)} />;
       case 'settings':      return <SettingsPage />;
       default:           return null;
     }
