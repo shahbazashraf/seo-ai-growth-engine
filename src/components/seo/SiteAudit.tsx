@@ -101,6 +101,23 @@ export const SiteAudit = () => {
     },
   });
 
+  const viewAuditDetails = (row: AuditRecord) => {
+    setUrl(row.url);
+    try {
+      setResult({
+        score: row.score,
+        issues: JSON.parse(row.issues || '[]'),
+        recommendations: JSON.parse(row.recommendations || '[]'),
+        responseTime: 0,
+        wordCount: 0,
+      });
+      toast.success('Loaded audit details from history');
+    } catch {
+      toast.error('Failed to parse audit details');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const runAudit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -353,16 +370,25 @@ export const SiteAudit = () => {
                           {new Date(row.createdAt).toLocaleDateString()}
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setUrl(row.url);
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                          >
-                            Re-audit <ArrowRight className="h-3 w-3 ml-1" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => viewAuditDetails(row)}
+                            >
+                              View Details
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setUrl(row.url);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                            >
+                              Re-audit <ArrowRight className="h-3 w-3 ml-1" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );

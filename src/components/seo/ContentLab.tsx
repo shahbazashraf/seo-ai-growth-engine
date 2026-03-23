@@ -253,7 +253,7 @@ export function ContentLab({ projectId }: ContentLabProps) {
         </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as typeof tab)} className="w-full">
-          <TabsList className="bg-transparent border-b border-border mb-6 rounded-none p-0 h-auto w-full justify-start gap-0">
+          <TabsList className="bg-transparent border-b border-border mb-6 rounded-none p-0 h-auto w-full justify-start gap-0 max-w-md">
             <TabsTrigger value="create" className="flex items-center gap-2 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground">
               <Sparkles className="h-4 w-4" /> Create
             </TabsTrigger>

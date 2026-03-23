@@ -89,7 +89,7 @@ Requirements:
       ? generated.content.replace(/[#*`\[\]]/g, "").split(/\s+/).filter((w: string) => w.length > 0).length
       : generated.wordCount || 0;
 
-    // Save to generated_content table
+    // Save to generated_content table and content_lab
     try {
       await blink.db.table("generated_content").create({
         siteUrl: targetUrl,
@@ -97,6 +97,17 @@ Requirements:
         content: generated.content,
         keywords: JSON.stringify(generated.keywords || []),
         metaDescription: generated.metaDescription,
+        wordCount: actualWordCount,
+      });
+
+      await blink.db.table("content_lab").create({
+        title: generated.title,
+        content: generated.content,
+        metaDescription: generated.metaDescription,
+        keywords: JSON.stringify(generated.keywords || []),
+        imageUrls: "[]",
+        status: "draft",
+        platformsPublished: "{}",
         wordCount: actualWordCount,
       });
     } catch (dbErr) {
