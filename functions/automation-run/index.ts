@@ -47,10 +47,8 @@ Deno.serve(async (req: Request) => {
       console.log("Scrape failed, using URL as context:", e);
     }
 
-    // Generate SEO-optimized blog post using Blink AI
-    const { object: generated } = await blink.ai.generateObject({
-      model: "google/gemini-3-flash",
-      prompt: `You are an expert SEO content strategist. Based on this website content/URL: ${targetUrl}
+    // Generate SEO-optimized blog post using OpenRouter (DeepSeek)
+    const prompt = `You are an expert SEO content strategist. Based on this website content/URL: ${targetUrl}
 
 Here is some content from the site for context:
 ${siteContext}
@@ -62,26 +60,42 @@ Requirements:
 - Meta description: 140-155 characters, includes call to action
 - Keywords: 5-7 relevant SEO keywords
 - Content: Full blog post in Markdown, minimum 800 words, with proper H2/H3 structure, introduction, body sections, and conclusion
-- Word count: Count actual words in the content field`,
-      schema: {
-        type: "object",
-        properties: {
-          title: { type: "string", description: "SEO-optimized blog post title" },
-          metaDescription: { type: "string", description: "Meta description 140-155 characters" },
-          keywords: {
-            type: "array",
-            items: { type: "string" },
-            description: "5-7 target SEO keywords",
-          },
-          content: { type: "string", description: "Full blog post in Markdown, minimum 800 words" },
-          wordCount: { type: "number", description: "Approximate word count of the content" },
-        },
-        required: ["title", "metaDescription", "keywords", "content", "wordCount"],
+- Word count: Count actual words in the content field.
+
+Respond STRICTLY with a JSON object. Ensure the JSON is valid and has exactly the following properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), and "wordCount" (number). Do not include any markdown formatting like \`\`\`json around the response.`;
+
+    const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer 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",
+        "Content-Type": "application/json"
       },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-chat",
+        response_format: { type: "json_object" },
+        messages: [{ role: "user", content: prompt }]
+      })
     });
 
-    if (!generated) {
-      throw new Error("AI failed to generate content");
+    if (!openRouterRes.ok) {
+      const errText = await openRouterRes.text();
+      throw new Error(`OpenRouter API error: ${errText}`);
+    }
+
+    const aiData = await openRouterRes.json();
+    let generated;
+    try {
+      const contentStr = aiData.choices[0].message.content;
+      // Strip markdown json blocks if the model still outputs them
+      const cleanJsonStr = contentStr.replace(/```json\n?|\n?```/g, "").trim();
+      generated = JSON.parse(cleanJsonStr);
+    } catch (e) {
+      console.error("Failed to parse AI response:", aiData.choices[0]?.message?.content);
+      throw new Error("AI failed to generate valid JSON content");
+    }
+
+    if (!generated || !generated.title) {
+      throw new Error("AI failed to generate complete content");
     }
 
     // Calculate actual word count
@@ -109,6 +123,9 @@ Requirements:
         status: "draft",
         platformsPublished: "{}",
         wordCount: actualWordCount,
+        userId: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
     } catch (dbErr) {
       console.error("DB save error:", dbErr);

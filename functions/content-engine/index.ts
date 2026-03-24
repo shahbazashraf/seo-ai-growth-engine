@@ -24,9 +24,7 @@ Deno.serve(async (req: Request) => {
       const { topic } = await req.json();
       if (!topic) throw new Error("Topic is required");
 
-      const { text } = await blink.ai.generateText({
-        model: "google/gemini-3-flash",
-        prompt: `Write a complete SEO-optimized blog post about: "${topic}"
+      const prompt = `Write a complete SEO-optimized blog post about: "${topic}"
       
 Return ONLY valid JSON:
 {
@@ -35,11 +33,30 @@ Return ONLY valid JSON:
   "keywords": ["kw1","kw2","kw3"],
   "content": "full post in markdown, min 800 words with ## headings, bullet points, and natural paragraph flow",
   "imagePrompts": ["descriptive prompt for hero image", "prompt for inline image"]
-}`,
+}`;
+
+      const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer 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",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "deepseek/deepseek-chat",
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: prompt }]
+        })
       });
 
+      if (!openRouterRes.ok) {
+        throw new Error(`OpenRouter API error: ${await openRouterRes.text()}`);
+      }
+
+      const aiData = await openRouterRes.json();
+      const contentStr = aiData.choices[0].message.content;
+
       // Simple extraction of JSON if AI wraps it in markdown
-      const jsonStr = text.replace(/```json\n?|\n?```/g, "").trim();
+      const jsonStr = contentStr.replace(/```json\n?|\n?```/g, "").trim();
       return new Response(jsonStr, {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -63,7 +80,7 @@ Return ONLY valid JSON:
     });
   } catch (error) {
     console.error("Content Engine Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
