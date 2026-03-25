@@ -1,10 +1,18 @@
 // ─── AI Helper (OpenRouter Primary, Gemini Fallback) ──────────────────────────
 // Calls APIs directly from the browser, bypassing Blink edge functions.
 
-const OPENROUTER_API_KEY = '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';
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Securely loaded from localStorage (highest priority) OR .env.local (do NOT commit to GitHub!)
+const OPENROUTER_API_KEY = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY || '';
+const GEMINI_API_KEY = localStorage.getItem('GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || '';
 
-const GEMINI_API_KEY = 'AIzaSyBLvtJaPAo-kOdlh5XyNc-Y142A9y_sb6s';
+if (!OPENROUTER_API_KEY) {
+  console.warn('VITE_OPENROUTER_API_KEY is not set. OpenRouter API calls will fail.');
+}
+if (!GEMINI_API_KEY) {
+  console.warn('VITE_GEMINI_API_KEY is not set. Gemini API calls will fail.');
+}
+
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 interface GeminiResponse {
@@ -18,6 +26,10 @@ interface OpenRouterResponse {
 }
 
 async function fetchOpenRouter(prompt: string): Promise<string> {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('Missing VITE_OPENROUTER_API_KEY in .env.local file.');
+  }
+
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
@@ -42,6 +54,10 @@ async function fetchOpenRouter(prompt: string): Promise<string> {
 }
 
 async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Missing VITE_GEMINI_API_KEY in .env.local file.');
+  }
+
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
