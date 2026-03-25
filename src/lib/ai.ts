@@ -2,14 +2,24 @@
 // Calls APIs directly from the browser, bypassing Blink edge functions.
 
 // Securely loaded from localStorage (highest priority) OR .env.local (do NOT commit to GitHub!)
-const OPENROUTER_API_KEY = localStorage.getItem('OPENROUTER_API_KEY') || import.meta.env.VITE_OPENROUTER_API_KEY || '';
-const GEMINI_API_KEY = localStorage.getItem('GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || '';
+const localRouterKey = localStorage.getItem('OPENROUTER_API_KEY');
+const envRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+const OPENROUTER_API_KEY = localRouterKey || envRouterKey || '';
+
+const localGeminiKey = localStorage.getItem('GEMINI_API_KEY');
+const envGeminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_KEY = localGeminiKey || envGeminiKey || '';
 
 if (!OPENROUTER_API_KEY) {
   console.warn('VITE_OPENROUTER_API_KEY is not set. OpenRouter API calls will fail.');
+} else {
+  console.log(`OpenRouter key loaded from ${localRouterKey ? 'localStorage' : 'environment variables'}. Starts with ${OPENROUTER_API_KEY.substring(0, 15)}...`);
 }
+
 if (!GEMINI_API_KEY) {
   console.warn('VITE_GEMINI_API_KEY is not set. Gemini API calls will fail.');
+} else {
+  console.log(`Gemini key loaded from ${localGeminiKey ? 'localStorage' : 'environment variables'}. Starts with ${GEMINI_API_KEY.substring(0, 10)}...`);
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
