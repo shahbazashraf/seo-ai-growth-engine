@@ -1,7 +1,7 @@
 // ─── AI Helper (OpenRouter Primary, Gemini Fallback) ──────────────────────────
 // Calls APIs directly from the browser, bypassing Blink edge functions.
 
-const OPENROUTER_API_KEY = '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';
+const OPENROUTER_API_KEY = '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';
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 const GEMINI_API_KEY = 'AIzaSyBLvtJaPAo-kOdlh5XyNc-Y142A9y_sb6s';
