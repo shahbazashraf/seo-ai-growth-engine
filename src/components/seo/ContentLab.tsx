@@ -16,8 +16,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { DistributionDialog } from './DistributionDialog';
-
-const CONTENT_ENGINE = 'https://gbqxp58q--content-engine.functions.blink.new';
+import { geminiGenerateJSON } from '@/lib/ai';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,14 +95,10 @@ export function ContentLab({ projectId }: ContentLabProps) {
   // ── Mutation: generate content ──
   const generateMutation = useMutation<GenerateResult, Error, string>({
     mutationFn: async (topicStr) => {
-      const token = await blink.auth.getValidToken();
-      const res = await fetch(`${CONTENT_ENGINE}/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ topic: topicStr }),
-      });
-      if (!res.ok) throw new Error(`Generate failed: ${res.status}`);
-      return res.json();
+      const result = await geminiGenerateJSON<GenerateResult>(
+        `Write a complete SEO-optimized blog post about: "${topicStr}"\n\nReturn ONLY valid JSON:\n{\n  "title": "...",\n  "metaDescription": "160 char max",\n  "keywords": ["kw1","kw2","kw3"],\n  "content": "full post in markdown, min 800 words with ## headings, bullet points, and natural paragraph flow",\n  "imagePrompts": ["descriptive prompt for hero image", "prompt for inline image"]\n}`
+      );
+      return result;
     },
     onSuccess: async (data) => {
       setTitle(data.title);
@@ -126,7 +121,6 @@ export function ContentLab({ projectId }: ContentLabProps) {
       // Also auto-insert hero image into content
       const heroMarkdown = `\n\n![Hero Image](${heroUrl})\n\n`;
       setContent(prev => {
-        // Insert hero image after the first heading (or at the start)
         const firstHeadingEnd = prev.indexOf('\n\n');
         if (firstHeadingEnd > -1) {
           return prev.slice(0, firstHeadingEnd) + heroMarkdown + prev.slice(firstHeadingEnd);

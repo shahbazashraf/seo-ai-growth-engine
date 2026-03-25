@@ -12,8 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import toast from 'react-hot-toast';
-
-const AUDIT_URL = 'https://gbqxp58q--seo-audit.functions.blink.new';
+import { geminiGenerateJSON } from '@/lib/ai';
 
 interface AuditIssue {
   check: string;
@@ -127,44 +126,154 @@ export const SiteAudit = () => {
     setLoading(true);
     setStep(0);
 
-    // Simulate progressive steps with real timing
     const stepDurations = [600, 800, 700, 1200, 400];
     let stepIndex = 0;
-
     const advanceStep = () => {
-      if (stepIndex < STEPS.length - 1) {
-        stepIndex++;
-        setStep(stepIndex);
-      }
+      if (stepIndex < STEPS.length - 1) { stepIndex++; setStep(stepIndex); }
     };
-
     const timers: ReturnType<typeof setTimeout>[] = [];
     let elapsed = 0;
     for (let i = 1; i < STEPS.length; i++) {
       elapsed += stepDurations[i - 1];
-      const t = setTimeout(() => advanceStep(), elapsed);
-      timers.push(t);
+      timers.push(setTimeout(advanceStep, elapsed));
     }
 
     try {
-      const token = await blink.auth.getValidToken();
-      const res = await fetch(AUDIT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ url: url.trim() }),
-      });
+      let targetUrl = url.trim();
+      if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
+
+      const issues: AuditIssue[] = [];
+      let score = 100;
+
+      // Fetch page HTML
+      const startTime = Date.now();
+      let html = '';
+      let fetchOk = false;
+      try {
+        const pageRes = await fetch(targetUrl, { signal: AbortSignal.timeout(12000), redirect: 'follow' });
+        html = await pageRes.text();
+        fetchOk = pageRes.ok;
+      } catch (e: any) {
+        // Try via a CORS proxy fallback
+        try {
+          const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(12000) });
+          html = await proxyRes.text();
+          fetchOk = proxyRes.ok;
+        } catch {
+          issues.push({ check: 'Page Reachability', severity: 'critical', detail: `Could not fetch URL: ${(e as Error).message}`, passed: false });
+          score -= 30;
+        }
+      }
+      const responseTime = Date.now() - startTime;
+
+      // HTTPS check
+      if (!targetUrl.startsWith('https://')) {
+        issues.push({ check: 'HTTPS', severity: 'critical', detail: 'Site is not using HTTPS. This hurts rankings and user trust.', passed: false });
+        score -= 15;
+      } else {
+        issues.push({ check: 'HTTPS', severity: 'info', detail: 'Site uses HTTPS. Good for security and rankings.', passed: true });
+      }
+
+      // Response time
+      if (responseTime > 3000) {
+        issues.push({ check: 'Page Speed', severity: 'critical', detail: `Page loaded in ${responseTime}ms (>3s is too slow).`, passed: false });
+        score -= 12;
+      } else if (responseTime > 1500) {
+        issues.push({ check: 'Page Speed', severity: 'warning', detail: `Page loaded in ${responseTime}ms (aim for under 1.5s).`, passed: false });
+        score -= 5;
+      } else {
+        issues.push({ check: 'Page Speed', severity: 'info', detail: `Page loaded in ${responseTime}ms. Fast!`, passed: true });
+      }
+
+      let wordCount = 0;
+      if (fetchOk && html) {
+        // Title
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim() : '';
+        if (!title) { issues.push({ check: 'Title Tag', severity: 'critical', detail: 'No <title> tag found.', passed: false }); score -= 15; }
+        else if (title.length < 30) { issues.push({ check: 'Title Length', severity: 'warning', detail: `Title is too short (${title.length} chars). Aim for 30-60.`, passed: false }); score -= 6; }
+        else if (title.length > 60) { issues.push({ check: 'Title Length', severity: 'warning', detail: `Title is too long (${title.length} chars). Keep under 60.`, passed: false }); score -= 4; }
+        else { issues.push({ check: 'Title Tag', severity: 'info', detail: `Title "${title.substring(0, 60)}" is well-optimized (${title.length} chars).`, passed: true }); }
+
+        // Meta description
+        const metaDescMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+          || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
+        const metaDesc = metaDescMatch ? metaDescMatch[1].trim() : '';
+        if (!metaDesc) { issues.push({ check: 'Meta Description', severity: 'critical', detail: 'No meta description found.', passed: false }); score -= 12; }
+        else if (metaDesc.length < 120) { issues.push({ check: 'Meta Description Length', severity: 'warning', detail: `Meta description is short (${metaDesc.length} chars). Aim for 120-160.`, passed: false }); score -= 4; }
+        else if (metaDesc.length > 160) { issues.push({ check: 'Meta Description Length', severity: 'warning', detail: `Meta description may be truncated (${metaDesc.length} chars).`, passed: false }); score -= 3; }
+        else { issues.push({ check: 'Meta Description', severity: 'info', detail: `Meta description is well-optimized (${metaDesc.length} chars).`, passed: true }); }
+
+        // H1
+        const h1Matches = html.match(/<h1[^>]*>[\s\S]*?<\/h1>/gi) || [];
+        if (h1Matches.length === 0) { issues.push({ check: 'H1 Tag', severity: 'critical', detail: 'No H1 tag found.', passed: false }); score -= 10; }
+        else if (h1Matches.length > 1) { issues.push({ check: 'H1 Count', severity: 'warning', detail: `Found ${h1Matches.length} H1 tags. Use exactly one.`, passed: false }); score -= 6; }
+        else { issues.push({ check: 'H1 Tag', severity: 'info', detail: 'Page has exactly one H1 tag.', passed: true }); }
+
+        // Images alt text
+        const allImages = html.match(/<img[^>]+>/gi) || [];
+        const imagesWithoutAlt = allImages.filter(img => !/alt=["'][^"']*["']/i.test(img) || /alt=["']["']/i.test(img));
+        if (imagesWithoutAlt.length > 0) {
+          issues.push({ check: 'Image Alt Text', severity: imagesWithoutAlt.length >= 5 ? 'critical' : 'warning', detail: `${imagesWithoutAlt.length} of ${allImages.length} images missing alt text.`, passed: false });
+          score -= Math.min(imagesWithoutAlt.length * 2, 10);
+        } else if (allImages.length > 0) {
+          issues.push({ check: 'Image Alt Text', severity: 'info', detail: `All ${allImages.length} images have alt text.`, passed: true });
+        }
+
+        // Canonical, viewport, OG
+        if (!/<link[^>]+rel=["']canonical["']/i.test(html)) { issues.push({ check: 'Canonical Tag', severity: 'warning', detail: 'No canonical tag found.', passed: false }); score -= 5; }
+        else { issues.push({ check: 'Canonical Tag', severity: 'info', detail: 'Canonical tag present.', passed: true }); }
+
+        if (!/<meta[^>]+name=["']viewport["']/i.test(html)) { issues.push({ check: 'Mobile Viewport', severity: 'warning', detail: 'No viewport meta tag.', passed: false }); score -= 5; }
+        else { issues.push({ check: 'Mobile Viewport', severity: 'info', detail: 'Viewport meta tag present.', passed: true }); }
+
+        if (!/<meta[^>]+property=["']og:/i.test(html)) { issues.push({ check: 'Open Graph Tags', severity: 'warning', detail: 'No Open Graph tags found.', passed: false }); score -= 4; }
+        else { issues.push({ check: 'Open Graph Tags', severity: 'info', detail: 'Open Graph tags found.', passed: true }); }
+
+        // Word count
+        const bodyText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        wordCount = bodyText.split(/\s+/).filter(w => w.length > 2).length;
+        if (wordCount < 300) { issues.push({ check: 'Content Length', severity: 'warning', detail: `~${wordCount} words. Thin content hurts rankings.`, passed: false }); score -= 8; }
+        else { issues.push({ check: 'Content Length', severity: 'info', detail: `~${wordCount} words. Good depth.`, passed: true }); }
+      }
+
+      score = Math.max(0, Math.min(100, score));
+
+      // AI Recommendations via Gemini
+      let recommendations: string[] = [];
+      const failedIssues = issues.filter(i => !i.passed);
+      try {
+        const issuesSummary = failedIssues.map(i => `[${i.severity.toUpperCase()}] ${i.check}: ${i.detail}`).join('\n');
+        recommendations = await geminiGenerateJSON<string[]>(
+          `You are an SEO expert. A website audit for "${targetUrl}" produced these issues:\n\n${issuesSummary}\n\nScore: ${score}/100.\n\nProvide EXACTLY 4 specific, actionable recommendations. Return ONLY a JSON array of strings:\n["recommendation 1", "recommendation 2", "recommendation 3", "recommendation 4"]`
+        );
+      } catch {
+        recommendations = [
+          'Fix all critical issues first — title, meta description, and H1 have the highest ranking impact.',
+          'Enable HTTPS if not already active to secure your site and improve rankings.',
+          'Add alt text to all images to improve accessibility and image search visibility.',
+          'Create and submit an XML sitemap to Google Search Console for faster indexing.',
+        ];
+      }
 
       timers.forEach(clearTimeout);
       setStep(STEPS.length - 1);
 
-      const data = await res.json();
+      setResult({ score, issues, recommendations, responseTime, wordCount });
 
-      if (!res.ok) throw new Error(data.error || 'Audit failed');
+      // Save to DB
+      try {
+        await blink.db.table('audits').create({
+          url: targetUrl,
+          score,
+          issues: JSON.stringify(issues),
+          recommendations: JSON.stringify(recommendations),
+          createdAt: new Date().toISOString(),
+        });
+      } catch (dbErr) {
+        console.error('DB save error:', dbErr);
+      }
 
-      setResult(data);
       await refetchHistory();
       toast.success('Audit complete!');
     } catch (err: any) {

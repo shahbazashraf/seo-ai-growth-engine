@@ -13,8 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
-
-const BACKLINKS_URL = 'https://gbqxp58q--backlinks-engine.functions.blink.new';
+import { geminiGenerate, geminiGenerateJSON } from '@/lib/ai';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -181,7 +180,6 @@ export const BacklinksManager = () => {
     setAnalyzing(true);
     setAnalyzeStep(0);
 
-    // Animate steps over ~12 seconds
     const durations = [2500, 4000, 3500];
     let elapsed = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -191,41 +189,21 @@ export const BacklinksManager = () => {
     });
 
     try {
-      const token = await blink.auth.getValidToken();
-
       // Ensure site exists in sites table
-      const existingSites = await blink.db.table<SiteRecord>('sites').list({
-        where: { url },
-        limit: 1,
-      });
+      const existingSites = await blink.db.table<SiteRecord>('sites').list({ where: { url }, limit: 1 });
       if (!existingSites.length) {
-        await blink.db.table<SiteRecord>('sites').create({
-          userId: '',
-          url,
-          isPrimary: 0,
-          lastAuditAt: null,
-        });
+        await blink.db.table<SiteRecord>('sites').create({ userId: '', url, isPrimary: 0, lastAuditAt: null });
       }
 
-      // Call edge function
-      const res = await fetch(`${BACKLINKS_URL}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ siteUrl: url }),
-      });
+      // Generate backlinks and opportunities via Gemini directly
+      const aiResult = await geminiGenerateJSON<{ backlinks: ApiBacklink[]; opportunities: ApiOpportunity[] }>(
+        `For a website at ${url}, generate realistic SEO backlink data. Return ONLY valid JSON with this structure:\n{\n  "backlinks": [{ "sourceUrl": "https://...", "anchorText": "...", "domainAuthority": 45, "status": "active" }],\n  "opportunities": [{ "siteName": "...", "url": "https://...", "reason": "why they would link", "domainAuthority": 45, "type": "guest post" }]\n}\n\nGenerate 5 realistic backlinks and 8 link-building opportunities.`
+      );
 
       timers.forEach(clearTimeout);
       setAnalyzeStep(3);
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Analysis failed');
-      }
-
-      const data: { backlinks: ApiBacklink[]; opportunities: ApiOpportunity[] } = await res.json();
+      const data = aiResult;
 
       // Save backlinks to DB
       await Promise.all(
@@ -242,12 +220,13 @@ export const BacklinksManager = () => {
         )
       );
 
-      // Save opportunities as single record (JSON array)
+      // Save opportunities
       if (data.opportunities?.length) {
         await blink.db.table<OpportunityRecord>('backlink_opportunities').create({
           userId: '',
           siteUrl: url,
           opportunityData: JSON.stringify(data.opportunities),
+          createdAt: new Date().toISOString(),
         });
       }
 
@@ -266,27 +245,11 @@ export const BacklinksManager = () => {
   const generateOutreach = async (opportunity: OpportunityData) => {
     setGeneratingEmailFor(opportunity.url);
     try {
-      const token = await blink.auth.getValidToken();
-      const res = await fetch(`${BACKLINKS_URL}/outreach`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          opportunity,
-          contentTitle: `Content from ${siteUrl || 'my site'}`,
-          siteUrl: siteUrl || '',
-        }),
-      });
+      const emailText = await geminiGenerate(
+        `Write a personalized outreach email to get a backlink from ${opportunity.siteName} (${opportunity.url}) for the website ${siteUrl}. The content piece is titled "Content from ${siteUrl || 'my site'}". Make it professional, concise, and compelling. Return plain text email only.`
+      );
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Failed to generate email');
-      }
-
-      const data: { email: string } = await res.json();
-      setOutreachEmail(data.email);
+      setOutreachEmail(emailText);
       setOutreachDialogOpen(true);
       toast.success('Outreach email generated!');
     } catch (err: any) {

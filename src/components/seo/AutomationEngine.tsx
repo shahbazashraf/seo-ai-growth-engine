@@ -15,8 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import toast from 'react-hot-toast';
-
-const RUN_URL = 'https://gbqxp58q--automation-run.functions.blink.new';
+import { geminiGenerateJSON } from '@/lib/ai';
 
 interface GeneratedContent {
   title: string;
@@ -160,20 +159,54 @@ export const AutomationEngine = () => {
     }
 
     try {
-      const token = await blink.auth.getValidToken();
-      const res = await fetch(RUN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ siteUrl: siteUrl.trim() }),
-      });
+      let targetUrl = siteUrl.trim();
+      if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
+
+      // Call Gemini directly from the browser
+      const data = await geminiGenerateJSON<GeneratedContent>(
+        `You are an expert SEO content strategist. Based on this website URL: ${targetUrl}\n\nGenerate a high-quality, SEO-optimized blog post that would attract organic traffic to this site.\n\nRequirements:\n- Title: Compelling, SEO-optimized, includes a primary keyword\n- Meta description: 140-155 characters, includes call to action\n- Keywords: 5-7 relevant SEO keywords\n- Content: Full blog post in Markdown, minimum 800 words, with proper H2/H3 structure, introduction, body sections, and conclusion\n- Word count: Count actual words in the content field.\n\nRespond STRICTLY with a JSON object with these properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), and "wordCount" (number).`
+      );
 
       timers.forEach(clearTimeout);
       setPipelineStep(PIPELINE_STEPS.length - 1);
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Generation failed');
+      // Calculate actual word count
+      const actualWordCount = data.content
+        ? data.content.replace(/[#*`\[\]]/g, '').split(/\s+/).filter((w: string) => w.length > 0).length
+        : data.wordCount || 0;
 
-      setResult(data);
+      const resultData = { ...data, wordCount: actualWordCount };
+      setResult(resultData);
+
+      // Save to DB
+      try {
+        await blink.db.table('generated_content').create({
+          siteUrl: targetUrl,
+          title: data.title,
+          content: data.content,
+          keywords: JSON.stringify(data.keywords || []),
+          metaDescription: data.metaDescription,
+          wordCount: actualWordCount,
+          createdAt: new Date().toISOString(),
+        });
+
+        await blink.db.table('content_lab').create({
+          title: data.title,
+          content: data.content,
+          metaDescription: data.metaDescription,
+          keywords: JSON.stringify(data.keywords || []),
+          imageUrls: '[]',
+          status: 'draft',
+          platformsPublished: '{}',
+          wordCount: actualWordCount,
+          userId: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (dbErr) {
+        console.error('DB save error:', dbErr);
+      }
+
       await refetchHistory();
 
       // Auto-distribute if enabled
@@ -184,7 +217,6 @@ export const AutomationEngine = () => {
         if (activePlatforms.length > 0) {
           setLastDistributed(activePlatforms.join(', '));
           toast.success(`Auto-distributing to: ${activePlatforms.join(', ')}`);
-          // Open social share URLs for non-API platforms
           activePlatforms.forEach(p => {
             if (p === 'twitter') {
               window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(data.title)}`, '_blank');
