@@ -1,29 +1,34 @@
 // ─── AI Helper (OpenRouter Primary, Gemini Fallback) ──────────────────────────
-// Calls APIs directly from the browser, bypassing Blink edge functions.
-
-// Securely loaded from localStorage (highest priority) OR .env.local (do NOT commit to GitHub!)
-const localRouterKey = localStorage.getItem('OPENROUTER_API_KEY');
-const envRouterKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_KEY = localRouterKey || envRouterKey || '';
-
-const localGeminiKey = localStorage.getItem('GEMINI_API_KEY');
-const envGeminiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_KEY = localGeminiKey || envGeminiKey || '';
-
-if (!OPENROUTER_API_KEY) {
-  console.warn('VITE_OPENROUTER_API_KEY is not set. OpenRouter API calls will fail.');
-} else {
-  console.log(`OpenRouter key loaded from ${localRouterKey ? 'localStorage' : 'environment variables'}. Starts with ${OPENROUTER_API_KEY.substring(0, 15)}...`);
-}
-
-if (!GEMINI_API_KEY) {
-  console.warn('VITE_GEMINI_API_KEY is not set. Gemini API calls will fail.');
-} else {
-  console.log(`Gemini key loaded from ${localGeminiKey ? 'localStorage' : 'environment variables'}. Starts with ${GEMINI_API_KEY.substring(0, 10)}...`);
-}
+// Keys are stored in browser localStorage. Set them via the Settings page.
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+function getOpenRouterKey(): string {
+  return localStorage.getItem('OPENROUTER_API_KEY') || '';
+}
+
+function getGeminiKey(): string {
+  return localStorage.getItem('GEMINI_API_KEY') || '';
+}
+
+/** Save API keys to localStorage (called from Settings page) */
+export function saveAIKeys(openRouterKey: string, geminiKey: string) {
+  if (openRouterKey.trim()) localStorage.setItem('OPENROUTER_API_KEY', openRouterKey.trim());
+  if (geminiKey.trim()) localStorage.setItem('GEMINI_API_KEY', geminiKey.trim());
+}
+
+/** Get current saved keys (for displaying in Settings) */
+export function getAIKeys() {
+  return {
+    openRouterKey: getOpenRouterKey(),
+    geminiKey: getGeminiKey(),
+  };
+}
+
+/** Check if at least one AI key is configured */
+export function hasAIKeys(): boolean {
+  return !!(getOpenRouterKey() || getGeminiKey());
+}
 
 interface GeminiResponse {
   candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
@@ -36,19 +41,18 @@ interface OpenRouterResponse {
 }
 
 async function fetchOpenRouter(prompt: string): Promise<string> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('Missing VITE_OPENROUTER_API_KEY in .env.local file.');
-  }
+  const key = getOpenRouterKey();
+  if (!key) throw new Error('OpenRouter API key not set. Go to Settings → AI Keys to add it.');
 
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+      'Authorization': `Bearer ${key}`,
     },
     body: JSON.stringify({
       model: 'deepseek/deepseek-chat',
-      messages: [{ role: 'user', content: prompt }]
+      messages: [{ role: 'user', content: prompt }],
     }),
   });
 
@@ -64,10 +68,10 @@ async function fetchOpenRouter(prompt: string): Promise<string> {
 }
 
 async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    throw new Error('Missing VITE_GEMINI_API_KEY in .env.local file.');
-  }
+  const key = getGeminiKey();
+  if (!key) throw new Error('Gemini API key not set. Go to Settings → AI Keys to add it.');
 
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
   let lastError = '';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -76,7 +80,7 @@ async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
       await new Promise(r => setTimeout(r, delay));
     }
 
-    const res = await fetch(GEMINI_URL, {
+    const res = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -110,21 +114,32 @@ async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
 
 /**
  * Call AI API: Tries OpenRouter first, falls back to Gemini.
- * Maintained name `geminiGenerate` to avoid breaking existing imports.
  */
 export async function geminiGenerate(prompt: string, maxRetries = 3): Promise<string> {
-  try {
-    console.log('Attempting OpenRouter generation...');
-    return await fetchOpenRouter(prompt);
-  } catch (err) {
-    console.warn('OpenRouter failed, falling back to Gemini:', err);
-    return await fetchGemini(prompt, maxRetries);
+  const hasRouter = !!getOpenRouterKey();
+  const hasGemini = !!getGeminiKey();
+
+  if (!hasRouter && !hasGemini) {
+    throw new Error('No AI API keys configured. Go to Settings → AI Keys to add your OpenRouter or Gemini key.');
   }
+
+  if (hasRouter) {
+    try {
+      return await fetchOpenRouter(prompt);
+    } catch (err) {
+      if (hasGemini) {
+        console.warn('OpenRouter failed, falling back to Gemini:', err);
+        return await fetchGemini(prompt, maxRetries);
+      }
+      throw err;
+    }
+  }
+
+  return await fetchGemini(prompt, maxRetries);
 }
 
 /**
  * Call AI and parse the response as JSON.
- * Strips markdown code fences if present.
  */
 export async function geminiGenerateJSON<T = unknown>(prompt: string, maxRetries = 3): Promise<T> {
   const text = await geminiGenerate(prompt, maxRetries);
@@ -137,3 +152,4 @@ export async function geminiGenerateJSON<T = unknown>(prompt: string, maxRetries
     throw new Error('Failed to parse AI response as JSON');
   }
 }
+

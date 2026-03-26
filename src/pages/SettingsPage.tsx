@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import toast from 'react-hot-toast';
+import { saveAIKeys, getAIKeys, hasAIKeys } from '@/lib/ai';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -460,10 +461,122 @@ export const SettingsPage = () => {
 
   const platformsConnected = credentials.length;
 
+  // ── Section 5: AI API Keys (localStorage) ────────────────────────────────
+
+  const existingKeys = getAIKeys();
+  const [orKey, setOrKey] = useState(existingKeys.openRouterKey);
+  const [gmKey, setGmKey] = useState(existingKeys.geminiKey);
+  const [showOrKey, setShowOrKey] = useState(false);
+  const [showGmKey, setShowGmKey] = useState(false);
+  const [savingAI, setSavingAI] = useState(false);
+  const [testingAI, setTestingAI] = useState(false);
+
+  const handleSaveAIKeys = () => {
+    setSavingAI(true);
+    try {
+      saveAIKeys(orKey, gmKey);
+      toast.success('AI API keys saved securely in your browser!');
+    } catch {
+      toast.error('Failed to save keys');
+    } finally {
+      setSavingAI(false);
+    }
+  };
+
+  const handleTestAIKeys = async () => {
+    setTestingAI(true);
+    try {
+      const key = orKey.trim();
+      if (!key) { toast.error('Enter an OpenRouter key first'); return; }
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ model: 'deepseek/deepseek-chat', messages: [{ role: 'user', content: 'Say OK' }], max_tokens: 5 }),
+      });
+      if (res.ok) {
+        toast.success('OpenRouter key is working! ✓');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(`OpenRouter: ${(err as any).error?.message || res.status}`);
+      }
+    } catch {
+      toast.error('Connection test failed');
+    } finally {
+      setTestingAI(false);
+    }
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-10 animate-fade-in">
+
+      {/* ══ Section 0: AI API Keys ══ */}
+      <section>
+        <div className="flex items-center gap-2.5 mb-5">
+          <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+            <Key className="h-4 w-4 text-amber-600" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold">AI API Keys</h2>
+            <p className="text-xs text-muted-foreground">
+              Keys are stored securely in your browser only — never sent to any server.
+            </p>
+          </div>
+          {hasAIKeys() && (
+            <Badge className="ml-auto bg-emerald-100 text-emerald-700 border-emerald-200 border text-[10px] gap-1">
+              <CheckCircle2 className="h-2.5 w-2.5" /> Configured
+            </Badge>
+          )}
+        </div>
+
+        <Card className="border-amber-500/20">
+          <CardContent className="p-5 space-y-4">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">OpenRouter API Key (Primary)</label>
+              <div className="relative">
+                <Input
+                  type={showOrKey ? 'text' : 'password'}
+                  placeholder="sk-or-v1-..."
+                  value={orKey}
+                  onChange={e => setOrKey(e.target.value)}
+                  className="pr-10 text-sm h-10"
+                />
+                <button type="button" onClick={() => setShowOrKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showOrKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Get your key from <a href="https://openrouter.ai/keys" target="_blank" className="underline text-primary">openrouter.ai/keys</a></p>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Gemini API Key (Fallback)</label>
+              <div className="relative">
+                <Input
+                  type={showGmKey ? 'text' : 'password'}
+                  placeholder="AIza..."
+                  value={gmKey}
+                  onChange={e => setGmKey(e.target.value)}
+                  className="pr-10 text-sm h-10"
+                />
+                <button type="button" onClick={() => setShowGmKey(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  {showGmKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-1">Get your key from <a href="https://aistudio.google.com/apikey" target="_blank" className="underline text-primary">aistudio.google.com</a></p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleSaveAIKeys} disabled={savingAI} className="flex-1 shadow-sm shadow-primary/10">
+                {savingAI ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Saving…</> : <><Save className="h-3.5 w-3.5 mr-1.5" />Save Keys</>}
+              </Button>
+              <Button variant="outline" onClick={handleTestAIKeys} disabled={testingAI || !orKey.trim()}>
+                {testingAI ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <TestTube2 className="h-3.5 w-3.5" />}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
 
       {/* ══ Section 1: Platform Connections ══ */}
       <section>
