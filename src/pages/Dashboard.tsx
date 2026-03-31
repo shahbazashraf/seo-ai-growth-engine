@@ -36,6 +36,7 @@ const VIEW_TITLE: Record<View, string> = {
 
 export const Dashboard = () => {
   const [active, setActive] = useState<View>('overview');
+  const [distContentId, setDistContentId] = useState<string>('');
   const { data: projects = [] } = useProjects();
   const projectId = projects[0]?.id ?? 'demo-project';
 
@@ -44,9 +45,18 @@ export const Dashboard = () => {
       case 'overview':   return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
       case 'audit':      return <SiteAudit />;
       case 'automation': return <AutomationEngine />;
-      case 'content':    return <ContentLab projectId={projectId} />;
+      case 'content':    return <ContentLab 
+                                  projectId={projectId} 
+                                  onNavigate={(v, id) => {
+                                    if (id) setDistContentId(id);
+                                    setActive(v as View);
+                                  }} 
+                                />;
       case 'backlinks':     return <BacklinksManager />;
-      case 'distribution':  return <DistributionEngine onNavigate={(v) => setActive(v as View)} />;
+      case 'distribution':  return <DistributionEngine 
+                                  onNavigate={(v) => setActive(v as View)} 
+                                  initialContentId={distContentId}
+                                />;
       case 'settings':      return <SettingsPage />;
       default:           return null;
     }

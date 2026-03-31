@@ -15,7 +15,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
-import { DistributionDialog } from './DistributionDialog';
 import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
@@ -46,6 +45,7 @@ interface GenerateResult {
 
 interface ContentLabProps {
   projectId: string;
+  onNavigate?: (view: string, id?: string) => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ function parsePlatforms(json: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function ContentLab({ projectId }: ContentLabProps) {
+export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   const queryClient = useQueryClient();
 
   // ── Create tab state ──
@@ -78,9 +78,7 @@ export function ContentLab({ projectId }: ContentLabProps) {
   const [addingImageIdx, setAddingImageIdx] = useState<number | null>(null);
   const [generated, setGenerated] = useState(false);
 
-  // ── Distribution dialog state ──
-  const [distOpen, setDistOpen] = useState(false);
-  const [distContentId, setDistContentId] = useState<string | null>(null);
+  // ── Distribution sync ──
 
   // ── Tab ──
   const [tab, setTab] = useState<'create' | 'my-content'>('create');
@@ -147,6 +145,25 @@ export function ContentLab({ projectId }: ContentLabProps) {
     }
   };
 
+  // ── Mutation: Enhance Content ──
+  const enhanceMutation = useMutation<GenerateResult, Error, void>({
+    mutationFn: async () => {
+      const result = await geminiGenerateJSON<GenerateResult>(
+        `You are an expert SEO content improver. Enhance the following blog post to significantly improve flow, keyword density naturally, add formatting (bolding key terms, better headers), and make it more engaging. Preserve the core message.\n\nCurrent Title: ${title}\nCurrent Content:\n${content}\n\nReturn ONLY valid JSON:\n{\n  "title": "same or improved title",\n  "metaDescription": "160 char max, highly clickable",\n  "keywords": ["..."],\n  "content": "improved full post in markdown",\n  "imagePrompts": ["highly descriptive AI image prompt for hero image", "descriptive prompt for inline"]\n}`
+      );
+      return result;
+    },
+    onSuccess: (data) => {
+      setTitle(data.title);
+      setContent(data.content);
+      if (data.metaDescription) setMetaDescription(data.metaDescription);
+      if (data.keywords?.length) setKeywords(data.keywords);
+      if (data.imagePrompts?.length) setImagePrompts(data.imagePrompts);
+      toast.success('Content enhanced with AI!');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ── Mutation: save draft ──
   const saveDraftMutation = useMutation<ContentLabRow, Error, void>({
     mutationFn: async () => {
@@ -204,8 +221,11 @@ export function ContentLab({ projectId }: ContentLabProps) {
   };
 
   const openDistribution = (id: string) => {
-    setDistContentId(id);
-    setDistOpen(true);
+    if (onNavigate) {
+      onNavigate('distribution', id);
+    } else {
+      toast.error('Routing to distribution is unavailable in this view.');
+    }
   };
 
   const resetCreate = () => {
@@ -408,7 +428,16 @@ export function ContentLab({ projectId }: ContentLabProps) {
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center gap-3 pt-2">
+                <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => enhanceMutation.mutate()}
+                    disabled={enhanceMutation.isPending || !content.trim()}
+                    className="border-primary/20 text-primary hover:bg-primary/5 shadow-sm"
+                  >
+                    {enhanceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+                    {enhanceMutation.isPending ? 'Enhancing...' : 'Enhance with AI'}
+                  </Button>
                   <Button
                     variant="outline"
                     onClick={() => saveDraftMutation.mutate()}
@@ -419,12 +448,14 @@ export function ContentLab({ projectId }: ContentLabProps) {
                   </Button>
                   <Button
                     className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-md shadow-primary/20"
-                    disabled={!title.trim() || saveDraftMutation.isPending}
+                    disabled={!title.trim() || saveDraftMutation.isPending || enhanceMutation.isPending}
                     onClick={async () => {
                       if (!editId) {
                         const saved = await saveDraftMutation.mutateAsync();
                         openDistribution(saved.id);
                       } else {
+                        // Force save draft before jumping to publish
+                        await saveDraftMutation.mutateAsync();
                         openDistribution(editId);
                       }
                     }}
@@ -550,16 +581,6 @@ export function ContentLab({ projectId }: ContentLabProps) {
         </Tabs>
       </div>
 
-      {/* Distribution Dialog */}
-      <DistributionDialog
-        open={distOpen}
-        onOpenChange={setDistOpen}
-        contentId={distContentId}
-        onPublished={() => {
-          queryClient.invalidateQueries({ queryKey: ['content_lab'] });
-          setTab('my-content');
-        }}
-      />
     </>
   );
 }

@@ -384,35 +384,58 @@ function BroadcastModal({ content, onClose, credentials }: BroadcastModalProps) 
       addProgress('⚠️ Clipboard copy failed — copy content manually before tabs open', 'warn');
     }
 
-    // Phase 3: Open social/submit tabs
+    // Phase 3: Open social/submit tabs sequentially (wait for close)
     let count = 0;
     for (const platform of socialPlatforms) {
-      if (cancelRef.current) break;
-      await new Promise(res => setTimeout(res, 600));
       if (cancelRef.current) break;
 
       const title = content.title || 'Check out this content';
       const url = '';
+      let targetUrl = '';
 
       if (platform.tier === 'social' && platform.shareUrl) {
-        window.open(platform.shareUrl(title, url), '_blank');
+        targetUrl = platform.shareUrl(title, url);
       } else if (platform.tier === 'submit' && platform.submitUrl) {
         const contentSlice = content.content?.slice(0, 500) || '';
-        let targetUrl = platform.submitUrl;
+        targetUrl = platform.submitUrl;
         if (platform.id === 'blogger' && contentSlice) {
           targetUrl = `https://www.blogger.com/blog-this.g?t=${encodeURIComponent(contentSlice)}&n=${encodeURIComponent(title)}`;
         }
-        window.open(targetUrl, '_blank');
+      }
+
+      if (targetUrl) {
+        addProgress(`🌐 Opening ${platform.name}...\n(Please submit and close its tab to open the next)`, 'info');
+        
+        try {
+          const win = window.open(targetUrl, '_blank');
+          if (!win || win.closed || typeof win.closed === 'undefined') {
+            addProgress(`⚠️ Popup blocked for ${platform.name}. Please allow popups.`, 'warn');
+            await new Promise(res => setTimeout(res, 2000));
+          } else {
+            // Wait for user to close the popup/tab
+            await new Promise<void>(resolve => {
+              const timer = setInterval(() => {
+                if (win.closed || cancelRef.current) {
+                  clearInterval(timer);
+                  resolve();
+                }
+              }, 500);
+            });
+            if (cancelRef.current) break;
+            addProgress(`✅ Finished with ${platform.name}.`, 'success');
+          }
+        } catch {
+          addProgress(`⚠️ Error opening ${platform.name}.`, 'warn');
+        }
       }
 
       count++;
       setOpenedCount(count);
-      addProgress(`🌐 Opened ${platform.name}`, 'info');
     }
 
     setRunning(false);
     setDone(true);
-    addProgress(`✅ Broadcast complete! ${apiSuccess} silent + ${count} tabs opened`, 'success');
+    addProgress(`🎉 All Done! ${apiSuccess} silent + ${count} tabs handled`, 'success');
   };
 
   const handleCancel = () => {
@@ -548,11 +571,23 @@ function BroadcastModal({ content, onClose, credentials }: BroadcastModalProps) 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export function DistributionEngine({ onNavigate }: { onNavigate?: (view: string) => void }) {
+export function DistributionEngine({ 
+  onNavigate,
+  initialContentId = '' 
+}: { 
+  onNavigate?: (view: string) => void;
+  initialContentId?: string;
+}) {
   const queryClient = useQueryClient();
 
   // Selection state
-  const [selectedContentId, setSelectedContentId] = useState<string>('');
+  const [selectedContentId, setSelectedContentId] = useState<string>(initialContentId);
+  
+  // Sync prop changes
+  React.useEffect(() => {
+    if (initialContentId) setSelectedContentId(initialContentId);
+  }, [initialContentId]);
+
   const [selectedPlatforms, setSelectedPlatforms] = useState<Record<string, boolean>>({});
   const [apiKeyInputs, setApiKeyInputs] = useState<Record<string, string>>({});
   const [savingCred, setSavingCred] = useState<Record<string, boolean>>({});
