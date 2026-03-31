@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import toast from 'react-hot-toast';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
 interface ArticleEditorProps {
   articleId: string;
@@ -290,10 +291,7 @@ export function ArticleEditor({ articleId, onBack }: ArticleEditorProps) {
                 <CardContent className="p-8 prose prose-teal max-w-none">
                   {content ? (
                     <div className="markdown-preview">
-                      <h1 className="text-3xl font-bold mb-6 text-foreground">{title}</h1>
-                      <div className="whitespace-pre-wrap font-sans text-muted-foreground leading-relaxed">
-                        {content}
-                      </div>
+                      <MarkdownRenderer content={content} />
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground py-20">

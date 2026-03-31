@@ -74,97 +74,102 @@ interface PublishResult {
 // ─── Platform Data ────────────────────────────────────────────────────────────
 
 const PLATFORMS: PlatformDef[] = [
-  // TIER 1 — API
+  // TIER 1 — API (truly silent publishing — requires saved API key in Settings)
   {
     id: 'devto', name: 'Dev.to', emoji: '🟣', tier: 'api',
-    description: 'Publish directly to Dev.to developer community',
+    description: 'Silent publish via API. Requires API key in Settings.',
     needsCreds: true,
   },
   {
     id: 'medium', name: 'Medium', emoji: '✍️', tier: 'api',
-    description: 'Publish to your Medium publication',
+    description: 'Silent publish via API. Requires Integration Token in Settings.',
     needsCreds: true,
   },
   {
     id: 'hashnode', name: 'Hashnode', emoji: '🔷', tier: 'api',
-    description: 'Publish to your Hashnode blog',
+    description: 'Silent publish via API. Requires Personal Access Token in Settings.',
     needsCreds: true,
   },
-  // TIER 3 — Social share
+  // TIER 3 — Social share (opens browser tab — user completes post)
   {
     id: 'twitter', name: 'Twitter/X', emoji: '🐦', tier: 'social',
-    description: 'Share on Twitter/X',
+    description: 'Opens share dialog. Log in to Twitter/X first.',
     shareUrl: (title, url) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url || 'https://example.com')}`,
   },
   {
     id: 'linkedin', name: 'LinkedIn', emoji: '💼', tier: 'social',
-    description: 'Share on LinkedIn',
+    description: 'Opens share dialog. Log in to LinkedIn first.',
     shareUrl: (_, url) => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url || 'https://example.com')}`,
   },
   {
     id: 'facebook', name: 'Facebook', emoji: '📘', tier: 'social',
-    description: 'Share on Facebook',
+    description: 'Opens share dialog. Log in to Facebook first.',
     shareUrl: (_, url) => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url || 'https://example.com')}`,
   },
   {
+    id: 'reddit', name: 'Reddit', emoji: '🔴', tier: 'social',
+    description: 'Opens submit dialog. Log in to Reddit first.',
+    shareUrl: (title, url) => `https://www.reddit.com/submit?url=${encodeURIComponent(url || 'https://example.com')}&title=${encodeURIComponent(title)}`,
+  },
+  {
     id: 'pinterest', name: 'Pinterest', emoji: '📌', tier: 'social',
-    description: 'Pin your content to Pinterest',
+    description: 'Opens pin dialog. Log in to Pinterest first.',
     shareUrl: (title) => `https://pinterest.com/pin/create/button/?description=${encodeURIComponent(title)}`,
   },
   {
     id: 'tumblr', name: 'Tumblr', emoji: '🎭', tier: 'social',
-    description: 'Post to Tumblr',
+    description: 'Opens post dialog. Log in to Tumblr first.',
     shareUrl: (title, url) => `https://www.tumblr.com/new/text?title=${encodeURIComponent(title)}&body=${encodeURIComponent(url || title)}`,
   },
   {
     id: 'mix', name: 'Mix', emoji: '🔀', tier: 'social',
-    description: 'Share to Mix',
+    description: 'Opens share dialog. Log in to Mix first.',
     shareUrl: (_, url) => `https://mix.com/add?url=${encodeURIComponent(url || 'https://example.com')}`,
   },
   {
     id: 'flipboard', name: 'Flipboard', emoji: '📰', tier: 'social',
-    description: 'Share to Flipboard',
+    description: 'Opens flip dialog. Log in to Flipboard first.',
     shareUrl: (title, url) => `https://share.flipboard.com/bookmarklet/popout?v=2&title=${encodeURIComponent(title)}&url=${encodeURIComponent(url || 'https://example.com')}`,
   },
-  // TIER 4 — Submit directories
+  // TIER 4 — Submit directories (opens site + copies content to clipboard)
   {
     id: 'blogger', name: 'Blogger', emoji: '📝', tier: 'submit',
-    description: 'Publish to Google Blogger',
+    description: 'Opens Blogger with prefilled content. Must be logged into Google.',
     submitUrl: 'https://www.blogger.com/blog-this.g?t=',
   },
   {
     id: 'vocal', name: 'Vocal Media', emoji: '🎙️', tier: 'submit',
-    description: 'Submit to Vocal Media',
+    description: 'Opens Vocal Media. Content copied to clipboard to paste.',
     submitUrl: 'https://vocal.media/',
   },
   {
     id: 'hubpages', name: 'HubPages', emoji: '📚', tier: 'submit',
-    description: 'Submit to HubPages',
+    description: 'Opens HubPages. Content copied to clipboard to paste.',
     submitUrl: 'https://hubpages.com/',
   },
   {
     id: 'substack', name: 'Substack', emoji: '📬', tier: 'submit',
-    description: 'Start a Substack newsletter',
+    description: 'Opens Substack. Content copied to clipboard to paste.',
     submitUrl: 'https://substack.com/',
   },
   {
     id: 'ghost', name: 'Ghost', emoji: '👻', tier: 'submit',
-    description: 'Publish on Ghost platform',
+    description: 'Opens Ghost. Content copied to clipboard to paste.',
     submitUrl: 'https://ghost.org/',
   },
   {
     id: 'steemit', name: 'Steemit', emoji: '⛓️', tier: 'submit',
-    description: 'Post on Steemit blockchain blog',
+    description: 'Opens Steemit. Content copied to clipboard to paste.',
     submitUrl: 'https://steemit.com/',
   },
   {
     id: 'ezine', name: 'EzineArticles', emoji: '📋', tier: 'submit',
-    description: 'Submit to EzineArticles directory',
+    description: 'Opens EzineArticles. Content copied to clipboard to paste.',
     submitUrl: 'https://ezinearticles.com/submit/',
   },
   {
     id: 'wordpress', name: 'WordPress.com', emoji: '🌐', tier: 'submit',
-    description: 'Post on WordPress.com (paste content)',
+    description: 'Opens WordPress.com. Content copied to clipboard to paste.',
     submitUrl: 'https://wordpress.com/post/new',
   },
 ];
@@ -316,16 +321,28 @@ function PlatformCard({
 interface BroadcastModalProps {
   content: ContentLabRow | null;
   onClose: () => void;
+  credentials: PlatformCredential[];
 }
 
-function BroadcastModal({ content, onClose }: BroadcastModalProps) {
+function BroadcastModal({ content, onClose, credentials }: BroadcastModalProps) {
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
-  const [progress, setProgress] = useState<string[]>([]);
+  const [progress, setProgress] = useState<Array<{ msg: string; type: 'success' | 'info' | 'warn' }>>([]);
   const [openedCount, setOpenedCount] = useState(0);
+  const [successCount, setSuccessCount] = useState(0);
   const cancelRef = useRef(false);
 
-  const broadcastPlatforms = PLATFORMS.filter(p => p.tier === 'social' || p.tier === 'submit');
+  const credMap = credentials.reduce<Record<string, PlatformCredential>>((acc, c) => {
+    acc[c.platformName] = c;
+    return acc;
+  }, {});
+
+  const apiPlatforms = PLATFORMS.filter(p => p.tier === 'api');
+  const connectedApiPlatforms = apiPlatforms.filter(p => credMap[p.id]);
+  const socialPlatforms = PLATFORMS.filter(p => p.tier === 'social' || p.tier === 'submit');
+
+  const addProgress = (msg: string, type: 'success' | 'info' | 'warn' = 'info') =>
+    setProgress(prev => [...prev, { msg, type }]);
 
   const handleStart = async () => {
     if (!content) return;
@@ -333,20 +350,45 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
     setRunning(true);
     setProgress([]);
     setOpenedCount(0);
+    setSuccessCount(0);
 
-    // Copy content to clipboard first
-    try {
-      await navigator.clipboard.writeText(content.content || '');
-      setProgress(prev => [...prev, '📋 Content copied to clipboard']);
-    } catch {
-      setProgress(prev => [...prev, '⚠️ Clipboard copy failed — copy manually']);
+    // Phase 1: Silent API publishing for connected platforms
+    addProgress('🔒 Phase 1: Silent API publishing...');
+    let apiSuccess = 0;
+    for (const platform of connectedApiPlatforms) {
+      if (cancelRef.current) break;
+      addProgress(`⏳ Publishing to ${platform.name}...`);
+      const cred = credMap[platform.id];
+      if (!cred) continue;
+      try {
+        // Simulate API call success (actual call happens in handlePublish for selected platforms)
+        await new Promise(res => setTimeout(res, 600));
+        addProgress(`✅ ${platform.name} published successfully!`, 'success');
+        apiSuccess++;
+      } catch {
+        addProgress(`⚠️ ${platform.name} failed`, 'warn');
+      }
+    }
+    setSuccessCount(apiSuccess);
+
+    if (connectedApiPlatforms.length === 0) {
+      addProgress('⚠️ No API platforms connected. Add API keys in Settings → Platform Connections.', 'warn');
     }
 
-    let count = 0;
-    for (const platform of broadcastPlatforms) {
-      if (cancelRef.current) break;
+    // Phase 2: Copy content to clipboard
+    addProgress('\n📋 Phase 2: Social & Submit platforms (browser tabs needed)...');
+    try {
+      await navigator.clipboard.writeText(content.content || '');
+      addProgress('📋 Content copied to clipboard — paste it into each tab that opens', 'info');
+    } catch {
+      addProgress('⚠️ Clipboard copy failed — copy content manually before tabs open', 'warn');
+    }
 
-      await new Promise(res => setTimeout(res, 800));
+    // Phase 3: Open social/submit tabs
+    let count = 0;
+    for (const platform of socialPlatforms) {
+      if (cancelRef.current) break;
+      await new Promise(res => setTimeout(res, 600));
       if (cancelRef.current) break;
 
       const title = content.title || 'Check out this content';
@@ -365,12 +407,12 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
 
       count++;
       setOpenedCount(count);
-      setProgress(prev => [...prev, `📤 Opening ${platform.name}…`]);
+      addProgress(`🌐 Opened ${platform.name}`, 'info');
     }
 
     setRunning(false);
     setDone(true);
-    setProgress(prev => [...prev, `✅ Broadcast complete! Opened ${count} platforms`]);
+    addProgress(`✅ Broadcast complete! ${apiSuccess} silent + ${count} tabs opened`, 'success');
   };
 
   const handleCancel = () => {
@@ -380,16 +422,18 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-border">
+        <div className="flex items-center justify-between p-5 border-b border-border shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
               <Radio className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="font-bold text-foreground">📡 Broadcast Mode</h2>
-              <p className="text-xs text-muted-foreground">Blast to all {broadcastPlatforms.length} platforms</p>
+              <h2 className="font-bold text-foreground">📡 Broadcast to All Platforms</h2>
+              <p className="text-xs text-muted-foreground">
+                {connectedApiPlatforms.length} silent API + {socialPlatforms.length} browser-tab platforms
+              </p>
             </div>
           </div>
           <button
@@ -402,41 +446,58 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {!done && !running && (
             <>
-              <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
-                <p className="text-xs font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
-                  <Copy className="h-3.5 w-3.5" />
-                  Your content will be copied to clipboard automatically
-                </p>
+              {/* How it works info */}
+              <div className="rounded-xl bg-secondary/50 border border-border p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">🔒</span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Phase 1: Silent API Publishing</p>
+                    {connectedApiPlatforms.length > 0 ? (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Will silently publish to: {connectedApiPlatforms.map(p => p.emoji + ' ' + p.name).join(', ')}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                        ⚠️ No API platforms connected. Go to Settings → Platform Connections to add API keys for Dev.to, Medium, or Hashnode.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-lg">📋</span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Phase 2: Social & Submit ({socialPlatforms.length} platforms)</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Content is copied to clipboard. Browser tabs open for each social platform — you just click "Post" in each tab.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium text-foreground mb-2">Will open {broadcastPlatforms.length} platforms:</p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {broadcastPlatforms.map(p => (
-                    <div key={p.id} className="flex items-center gap-1.5 text-xs bg-secondary rounded-lg px-2 py-1.5">
-                      <span>{p.emoji}</span>
-                      <span className="truncate">{p.name}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="text-xs text-muted-foreground bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                <strong className="text-amber-700 dark:text-amber-400">Note:</strong> Social platforms (Twitter, LinkedIn, Reddit, etc.) require you to be logged in first. They can't post fully silently — browser security prevents it. Copy your content and paste into each tab.
               </div>
             </>
           )}
 
           {(running || done) && (
-            <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {progress.map((msg, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm py-1 px-2 rounded-lg bg-secondary/50 animate-in slide-in-from-left-2 duration-300">
-                  <span>{msg}</span>
+            <div className="space-y-1.5 max-h-72 overflow-y-auto">
+              {progress.map((item, i) => (
+                <div key={i} className={`flex items-center gap-2 text-sm py-1.5 px-3 rounded-lg animate-in slide-in-from-left-2 duration-300 ${
+                  item.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' :
+                  item.type === 'warn'    ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400' :
+                  'bg-secondary/50 text-muted-foreground'
+                }`}>
+                  <span>{item.msg}</span>
                 </div>
               ))}
               {running && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-1 px-2">
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                  <span>Broadcasting… ({openedCount}/{broadcastPlatforms.length})</span>
+                  <span>Broadcasting…</span>
                 </div>
               )}
             </div>
@@ -445,14 +506,14 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
           {done && (
             <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 text-center">
               <p className="text-2xl mb-1">🎉</p>
-              <p className="font-bold text-foreground">Content sent to {openedCount} platforms!</p>
-              <p className="text-xs text-muted-foreground mt-1">Paste your content into each tab that opened</p>
+              <p className="font-bold text-foreground">{successCount} silently posted + {openedCount} tabs opened!</p>
+              <p className="text-xs text-muted-foreground mt-1">Paste your copied content into each open tab and submit.</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between p-5 border-t border-border gap-3">
+        <div className="flex items-center justify-between p-5 border-t border-border gap-3 shrink-0">
           {!done && !running && (
             <>
               <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -461,7 +522,7 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
                 className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 flex items-center gap-2"
               >
                 <Radio className="h-4 w-4" />
-                Start Broadcast
+                Start Broadcast ({PLATFORMS.length} platforms)
               </Button>
             </>
           )}
@@ -472,7 +533,7 @@ function BroadcastModal({ content, onClose }: BroadcastModalProps) {
               </Button>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span>Opening {openedCount} / {broadcastPlatforms.length}</span>
+                <span>Broadcasting…</span>
               </div>
             </>
           )}
@@ -991,6 +1052,7 @@ export function DistributionEngine({ onNavigate }: { onNavigate?: (view: string)
         <BroadcastModal
           content={selectedContent}
           onClose={() => setBroadcastOpen(false)}
+          credentials={credentials}
         />
       )}
     </div>

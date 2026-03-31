@@ -16,7 +16,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { DistributionDialog } from './DistributionDialog';
-import { geminiGenerateJSON } from '@/lib/ai';
+import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -96,7 +97,7 @@ export function ContentLab({ projectId }: ContentLabProps) {
   const generateMutation = useMutation<GenerateResult, Error, string>({
     mutationFn: async (topicStr) => {
       const result = await geminiGenerateJSON<GenerateResult>(
-        `Write a complete SEO-optimized blog post about: "${topicStr}"\n\nReturn ONLY valid JSON:\n{\n  "title": "...",\n  "metaDescription": "160 char max",\n  "keywords": ["kw1","kw2","kw3"],\n  "content": "full post in markdown, min 800 words with ## headings, bullet points, and natural paragraph flow",\n  "imagePrompts": ["descriptive prompt for hero image", "prompt for inline image"]\n}`
+        `Write a complete SEO-optimized blog post about: "${topicStr}"\n\nReturn ONLY valid JSON:\n{\n  "title": "...",\n  "metaDescription": "160 char max",\n  "keywords": ["kw1","kw2","kw3"],\n  "content": "full post in markdown, min 1000 words with ## headings, bullet points, and natural paragraph flow",\n  "imagePrompts": ["highly descriptive AI image prompt for hero image", "descriptive prompt for inline business/tech image"]\n}`
       );
       return result;
     },
@@ -108,13 +109,9 @@ export function ContentLab({ projectId }: ContentLabProps) {
       setImagePrompts(data.imagePrompts ?? []);
       setGenerated(true);
 
-      // Auto-add Unsplash images based on keywords
-      const kws = data.keywords ?? [];
-      const heroKw = kws[0]?.toLowerCase().replace(/\s+/g, ',') || 'technology';
-      const inlineKw = kws[1]?.toLowerCase().replace(/\s+/g, ',') || 'business';
-
-      const heroUrl = `https://source.unsplash.com/1200x630/?${heroKw}`;
-      const inlineUrl = `https://source.unsplash.com/800x400/?${inlineKw}`;
+      // Auto-generate images
+      const heroUrl = generateAIImageUrl(data.imagePrompts[0] || data.title, 1200, 630);
+      const inlineUrl = generateAIImageUrl(data.imagePrompts[1] || data.keywords[0] || 'business', 800, 400);
 
       setImageUrls([heroUrl, inlineUrl]);
 
@@ -134,15 +131,13 @@ export function ContentLab({ projectId }: ContentLabProps) {
   const fetchImage = async (prompt: string, idx: number) => {
     setAddingImageIdx(idx);
     try {
-      // Use Unsplash source for reliable, free images based on keywords
-      const keyword = prompt.split(' ').slice(0, 3).join(',').toLowerCase().replace(/[^a-z0-9,]/g, '');
-      const sizes = idx === 0 ? '1200x630' : '800x400';
-      const testUrl = `https://source.unsplash.com/${sizes}/?${keyword}`;
+      // Use AI Image generation
+      const sizes = idx === 0 ? { w: 1200, h: 630 } : { w: 800, h: 400 };
+      const testUrl = generateAIImageUrl(prompt, sizes.w, sizes.h);
       setImageUrls(prev => {
-        const filtered = prev.filter((_, i) => i !== idx);
-        const newUrls = [...filtered];
+        const newUrls = [...prev];
         newUrls[idx] = testUrl;
-        return newUrls.filter(Boolean);
+        return newUrls;
       });
       toast.success('Image added!');
     } catch (e: unknown) {
@@ -337,17 +332,31 @@ export function ContentLab({ projectId }: ContentLabProps) {
 
                 {/* Content editor */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-foreground">Content (Markdown)</label>
-                    <span className="text-xs text-muted-foreground">{wordCount} words</span>
-                  </div>
-                  <Textarea
-                    value={content}
-                    onChange={e => setContent(e.target.value)}
-                    placeholder="Write or paste markdown content…"
-                    rows={16}
-                    className="font-mono text-sm resize-y min-h-[320px]"
-                  />
+                  <Tabs defaultValue="editor" className="w-full">
+                    <div className="flex items-center justify-between mb-2">
+                      <TabsList className="bg-secondary/50 border border-primary/5">
+                        <TabsTrigger value="editor">Editor</TabsTrigger>
+                        <TabsTrigger value="preview">Preview</TabsTrigger>
+                      </TabsList>
+                      <span className="text-xs text-muted-foreground">{wordCount} words</span>
+                    </div>
+                    <TabsContent value="editor">
+                      <Textarea
+                        value={content}
+                        onChange={e => setContent(e.target.value)}
+                        placeholder="Write or paste markdown content…"
+                        rows={16}
+                        className="font-mono text-sm resize-y min-h-[400px]"
+                      />
+                    </TabsContent>
+                    <TabsContent value="preview">
+                      <Card className="min-h-[400px] border-primary/10 overflow-hidden bg-white shadow-inner">
+                        <CardContent className="p-8 prose prose-teal dark:prose-invert max-w-none">
+                          <MarkdownRenderer content={content} />
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </Tabs>
                 </div>
 
                 {/* Image prompts + previews */}

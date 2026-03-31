@@ -24,7 +24,11 @@ When creating content:
 7. Ensure content is at least 1500 words for comprehensive coverage
 
 Format outlines with clear hierarchical structure using numbering and bullet points.
-Generate full articles with proper markdown formatting, including bold text for emphasis, lists for readability, and strategic keyword placement.`;
+Generate full articles with proper markdown formatting, including bold text for emphasis, lists for readability, and strategic keyword placement.
+
+When mentioning visual elements, include structured AI image prompts like:
+![Alt Text](https://image.pollinations.ai/prompt/YOUR_DETAILED_PROMPT_HERE?width=1200&height=630&nologo=true)
+Ensure prompts are extremely descriptive and relevant to the surrounding text. Include at least 1 hero image at the top and 2 relevant inline images for long articles.`;
 
 /**
  * Fetches project details for context in AI generation

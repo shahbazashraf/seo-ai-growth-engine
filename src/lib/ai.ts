@@ -139,6 +139,16 @@ export async function geminiGenerate(prompt: string, maxRetries = 3): Promise<st
 }
 
 /**
+ * Generates an AI image URL based on a prompt.
+ * Using pollinations.ai for reliable, free AI image generation via URL.
+ */
+export function generateAIImageUrl(prompt: string, width = 1200, height = 630): string {
+  const seed = Math.floor(Math.random() * 1000000);
+  const normalizedPrompt = encodeURIComponent(prompt.trim());
+  return `https://image.pollinations.ai/prompt/${normalizedPrompt}?width=${width}&height=${height}&nologo=true&seed=${seed}`;
+}
+
+/**
  * Call AI and parse the response as JSON.
  */
 export async function geminiGenerateJSON<T = unknown>(prompt: string, maxRetries = 3): Promise<T> {

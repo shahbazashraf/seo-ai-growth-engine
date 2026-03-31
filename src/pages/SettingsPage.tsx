@@ -93,7 +93,7 @@ const PLATFORMS = [
     name: 'reddit',
     label: 'Reddit',
     emoji: '🔴',
-    description: 'Reddit API integration — coming soon.',
+    description: 'API publishing coming soon. Share manually in Distribution.',
     keyLabel: 'Coming Soon',
     testUrl: '',
     testHeader: '',

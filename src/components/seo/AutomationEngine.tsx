@@ -15,7 +15,8 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import toast from 'react-hot-toast';
-import { geminiGenerateJSON } from '@/lib/ai';
+import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
+import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
 interface GeneratedContent {
   title: string;
@@ -23,6 +24,7 @@ interface GeneratedContent {
   keywords: string[];
   content: string;
   wordCount: number;
+  imagePrompt?: string;
 }
 
 interface ContentRecord {
@@ -164,7 +166,7 @@ export const AutomationEngine = () => {
 
       // Call Gemini directly from the browser
       const data = await geminiGenerateJSON<GeneratedContent>(
-        `You are an expert SEO content strategist. Based on this website URL: ${targetUrl}\n\nGenerate a high-quality, SEO-optimized blog post that would attract organic traffic to this site.\n\nRequirements:\n- Title: Compelling, SEO-optimized, includes a primary keyword\n- Meta description: 140-155 characters, includes call to action\n- Keywords: 5-7 relevant SEO keywords\n- Content: Full blog post in Markdown, minimum 800 words, with proper H2/H3 structure, introduction, body sections, and conclusion\n- Word count: Count actual words in the content field.\n\nRespond STRICTLY with a JSON object with these properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), and "wordCount" (number).`
+        `You are an expert SEO content strategist. Based on this website URL: ${targetUrl}\n\nGenerate a high-quality, SEO-optimized blog post that would attract organic traffic to this site.\n\nRequirements:\n- Title: Compelling, SEO-optimized, includes a primary keyword\n- Meta description: 140-155 characters, includes call to action\n- Keywords: 5-7 relevant SEO keywords\n- Content: Full blog post in Markdown, minimum 1000 words, with proper H2/H3 structure, introduction, body sections, and conclusion. Include at least 2 relevant sub-headings.\n- Image Prompt: Provide a highly descriptive AI image prompt for a hero image related to this topic.\n- Word count: Count actual words in the content field.\n\nRespond STRICTLY with a JSON object with these properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), "imagePrompt" (string), and "wordCount" (number).`
       );
 
       timers.forEach(clearTimeout);
@@ -175,7 +177,9 @@ export const AutomationEngine = () => {
         ? data.content.replace(/[#*`\[\]]/g, '').split(/\s+/).filter((w: string) => w.length > 0).length
         : data.wordCount || 0;
 
-      const resultData = { ...data, wordCount: actualWordCount };
+      const heroUrl = generateAIImageUrl(data.imagePrompt || data.title, 1200, 630);
+      const contentWithImage = `\n\n![${data.title}](${heroUrl})\n\n${data.content}`;
+      const resultData = { ...data, content: contentWithImage, wordCount: actualWordCount };
       setResult(resultData);
 
       // Save to DB
@@ -450,10 +454,10 @@ export const AutomationEngine = () => {
                     {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </div>
                   {expanded && (
-                    <ScrollArea className="h-[300px]">
-                      <pre className="p-4 text-xs text-muted-foreground whitespace-pre-wrap font-sans leading-relaxed">
-                        {result.content}
-                      </pre>
+                    <ScrollArea className="h-[400px]">
+                      <div className="p-6">
+                        <MarkdownRenderer content={result.content} />
+                      </div>
                     </ScrollArea>
                   )}
                 </div>
