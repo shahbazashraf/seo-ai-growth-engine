@@ -10,6 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { createScheduledJob } from '@/lib/scheduler';
+import { createLogger, addBreadcrumb } from '@/lib/logger';
+
+const log = createLogger('DistributionEngine');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -780,10 +784,30 @@ export function DistributionEngine({
 
     if (successCount + openedCount > 0) {
       toast.success(`Published to ${successCount} + opened ${openedCount} platforms!`);
+      log.info('Distribution complete', { contentId: selectedContentId, platforms: activePlatformIds, success: successCount, failed: failedCount });
     }
     if (failedCount > 0) {
       toast.error(`${failedCount} platforms failed`);
     }
+  };
+
+  const handleSchedule = () => {
+    if (!selectedContentId) { toast.error('Select content first'); return; }
+    const activePlatformIds = Object.entries(selectedPlatforms)
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (!activePlatformIds.length) { toast.error('Select at least one platform'); return; }
+
+    createScheduledJob({
+      contentId: selectedContentId,
+      contentTitle: selectedContent?.title || 'Unknown Title',
+      platforms: activePlatformIds,
+      mode: 'later',
+    });
+
+    toast.success(`Content scheduled for ${activePlatformIds.length} platforms!`);
+    addBreadcrumb('content_scheduled', 'Distribution', { platforms: activePlatformIds });
+    clearAll();
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -939,6 +963,14 @@ export function DistributionEngine({
             >
               <Radio className="h-4 w-4" />
               📡 Broadcast Mode
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex items-center gap-2"
+              onClick={handleSchedule}
+              disabled={selectedCount === 0 || !selectedContentId}
+            >
+              <Clock className="h-4 w-4" /> Schedule
             </Button>
           </div>
         </div>

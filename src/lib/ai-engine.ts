@@ -1,5 +1,8 @@
 import { blink } from '@/blink/client';
 import { Article, Keyword, Project } from '@/hooks/useData';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('AIEngine');
 
 /**
  * Domain-specific system prompt for SEO content generation

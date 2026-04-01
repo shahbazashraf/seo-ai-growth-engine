@@ -17,6 +17,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import toast from 'react-hot-toast';
 import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { createLogger, addBreadcrumb } from '@/lib/logger';
+import { createScheduledJob } from '@/lib/scheduler';
+
+const log = createLogger('AutomationEngine');
 
 interface GeneratedContent {
   title: string;
@@ -147,6 +151,7 @@ export const AutomationEngine = () => {
     setRunning(true);
     setResult(null);
     setPipelineStep(0);
+    addBreadcrumb('automation_run', 'AutomationEngine', { siteUrl: siteUrl.trim() });
 
     const stepMs = [800, 1000, 2000, 400, 500, 300];
     let idx = 0;
@@ -237,6 +242,8 @@ export const AutomationEngine = () => {
       await saveSettings.mutateAsync({ lastRun: now, nextRun: calcNextRun(freq) });
 
       toast.success('Content generated successfully!');
+      addBreadcrumb('automation_success', 'AutomationEngine', { title: data.title, wordCount: actualWordCount });
+      log.info('Content generated', { title: data.title, wordCount: actualWordCount, siteUrl: targetUrl });
     } catch (err: any) {
       timers.forEach(clearTimeout);
       setPipelineStep(-1);

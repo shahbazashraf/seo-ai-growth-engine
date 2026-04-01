@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Globe, FileText, LayoutDashboard, Settings,
-  Link2, Zap, Send,
+  Link2, Zap, Send, Target, Network, Database
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SiteAudit } from '@/components/seo/SiteAudit';
@@ -10,14 +10,20 @@ import { ContentLab } from '@/components/seo/ContentLab';
 import { OverviewDashboard } from '@/components/seo/OverviewDashboard';
 import { BacklinksManager } from '@/components/seo/BacklinksManager';
 import { DistributionEngine } from '@/components/seo/DistributionEngine';
+import { CompetitorAnalysis } from '@/components/seo/CompetitorAnalysis';
+import { InternalLinkGraph } from '@/components/seo/InternalLinkGraph';
+import { ProgrammaticSEO } from '@/components/seo/ProgrammaticSEO';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { useProjects } from '@/hooks/useData';
 
-type View = 'overview' | 'audit' | 'automation' | 'content' | 'backlinks' | 'distribution' | 'settings';
+type View = 'overview' | 'audit' | 'competitor' | 'internal_links' | 'programmatic' | 'automation' | 'content' | 'backlinks' | 'distribution' | 'settings';
 
 const NAV: { view: View; icon: React.ReactNode; label: string }[] = [
   { view: 'overview',      icon: <LayoutDashboard size={18} />, label: 'Overview' },
   { view: 'audit',         icon: <Globe size={18} />,           label: 'Site Audit' },
+  { view: 'competitor',    icon: <Target size={18} />,          label: 'Competitor SERP' },
+  { view: 'internal_links',icon: <Network size={18} />,         label: 'Internal Links' },
+  { view: 'programmatic',  icon: <Database size={18} />,        label: 'Programmatic' },
   { view: 'content',       icon: <FileText size={18} />,        label: 'Content Lab' },
   { view: 'distribution',  icon: <Send size={18} />,            label: 'Distribution' },
   { view: 'automation',    icon: <Zap size={18} />,             label: 'Automation' },
@@ -27,6 +33,9 @@ const NAV: { view: View; icon: React.ReactNode; label: string }[] = [
 const VIEW_TITLE: Record<View, string> = {
   overview:     'Overview',
   audit:        'Site Audit',
+  competitor:   'Competitor SERP Engine',
+  internal_links: 'Internal Link Builder',
+  programmatic: 'Programmatic SEO Engine',
   automation:   'AI Automation Engine',
   content:      'Content Lab',
   backlinks:    'Backlinks Manager',
@@ -42,9 +51,12 @@ export const Dashboard = () => {
 
   const renderContent = () => {
     switch (active) {
-      case 'overview':   return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
-      case 'audit':      return <SiteAudit />;
-      case 'automation': return <AutomationEngine />;
+      case 'overview':       return <OverviewDashboard onNavigate={(v) => setActive(v as View)} />;
+      case 'audit':          return <SiteAudit />;
+      case 'competitor':     return <CompetitorAnalysis />;
+      case 'internal_links': return <InternalLinkGraph />;
+      case 'programmatic':   return <ProgrammaticSEO />;
+      case 'automation':     return <AutomationEngine />;
       case 'content':    return <ContentLab 
                                   projectId={projectId} 
                                   onNavigate={(v, id) => {

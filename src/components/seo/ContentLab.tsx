@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import {
   Sparkles, Loader2, Plus, Trash2, Edit2,
-  Send, FileText, Clock, Hash, ImageIcon, AlignLeft, UploadCloud
+  Send, FileText, Clock, Hash, ImageIcon, AlignLeft, UploadCloud,
+  Layout, ShoppingBag, BookOpen, HelpCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { blink } from '@/blink/client';
@@ -12,11 +13,40 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
+import { createLogger, addBreadcrumb } from '@/lib/logger';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+
+const log = createLogger('ContentLab');
+
+// ─── Content Type Configs ─────────────────────────────────────────────────────
+
+type ContentType = 'blog' | 'landing-page' | 'product-description';
+
+const CONTENT_TYPES: { value: ContentType; label: string; icon: React.ReactNode; description: string }[] = [
+  { value: 'blog', label: 'Blog Post', icon: <BookOpen className="h-4 w-4" />, description: 'SEO-optimized article with headings, images, and FAQ' },
+  { value: 'landing-page', label: 'Landing Page', icon: <Layout className="h-4 w-4" />, description: 'Conversion-focused page with CTA and benefits' },
+  { value: 'product-description', label: 'Product Description', icon: <ShoppingBag className="h-4 w-4" />, description: 'Compelling product copy with features and specs' },
+];
+
+function getContentTypePrompt(topic: string, contentType: ContentType): string {
+  const base = `Topic: "${topic}"\n\nReturn ONLY valid JSON:\n{\n  "title": "...",\n  "metaDescription": "160 char max",\n  "keywords": ["kw1","kw2","kw3","kw4","kw5"],\n  "content": "full content in markdown",\n  "imagePrompts": ["descriptive AI image prompt for hero", "descriptive prompt for inline"],\n  "faqSchema": [{"question": "...", "answer": "..."}]\n}`;
+
+  switch (contentType) {
+    case 'blog':
+      return `Write a complete SEO-optimized blog post about: ${base}\n\nRequirements:\n- Minimum 1200 words\n- Proper H1 title, H2 sections, H3 subsections\n- Natural keyword placement (1-2% density)\n- Include a FAQ section with 4-5 questions at the end\n- Include internal linking suggestions as [link text](URL_SUGGESTION)\n- Engaging introduction and strong conclusion with CTA`;
+
+    case 'landing-page':
+      return `Write a high-converting landing page about: ${base}\n\nRequirements:\n- Compelling hero headline and subheadline\n- 3-5 key benefits with icons/emoji\n- Social proof section\n- Feature comparison or specs\n- Strong CTA sections (minimum 2)\n- FAQ section with 3-4 questions\n- 600-800 words (concise and punchy)\n- Use persuasive, action-oriented language`;
+
+    case 'product-description':
+      return `Write a compelling product description about: ${base}\n\nRequirements:\n- Attention-grabbing product title\n- Key features list (5-7 items)\n- Detailed specifications section\n- Use cases / who it's for\n- Comparison with alternatives (subtle)\n- FAQ section with 3-4 questions\n- 500-700 words\n- Persuasive but honest tone\n- Include schema-ready product attributes`;
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +71,7 @@ interface GenerateResult {
   keywords: string[];
   content: string;
   imagePrompts: string[];
+  faqSchema?: { question: string; answer: string }[];
 }
 
 interface ContentLabProps {
@@ -68,6 +99,7 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
 
   // ── Create tab state ──
   const [topic, setTopic] = useState('');
+  const [contentType, setContentType] = useState<ContentType>('blog');
   const [editId, setEditId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -75,6 +107,7 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [imagePrompts, setImagePrompts] = useState<string[]>([]);
+  const [faqSchema, setFaqSchema] = useState<{ question: string; answer: string }[]>([]);
   const [addingImageIdx, setAddingImageIdx] = useState<number | null>(null);
   const [generated, setGenerated] = useState(false);
 
@@ -94,9 +127,10 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   // ── Mutation: generate content ──
   const generateMutation = useMutation<GenerateResult, Error, string>({
     mutationFn: async (topicStr) => {
-      const result = await geminiGenerateJSON<GenerateResult>(
-        `Write a complete SEO-optimized blog post about: "${topicStr}"\n\nReturn ONLY valid JSON:\n{\n  "title": "...",\n  "metaDescription": "160 char max",\n  "keywords": ["kw1","kw2","kw3"],\n  "content": "full post in markdown, min 1000 words with ## headings, bullet points, and natural paragraph flow",\n  "imagePrompts": ["highly descriptive AI image prompt for hero image", "descriptive prompt for inline business/tech image"]\n}`
-      );
+      addBreadcrumb('content_generate', 'ContentLab', { topic: topicStr, contentType });
+      log.info('Generating content', { topic: topicStr, contentType });
+      const prompt = getContentTypePrompt(topicStr, contentType);
+      const result = await geminiGenerateJSON<GenerateResult>(prompt);
       return result;
     },
     onSuccess: async (data) => {
@@ -105,7 +139,9 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
       setMetaDescription(data.metaDescription);
       setKeywords(data.keywords ?? []);
       setImagePrompts(data.imagePrompts ?? []);
+      setFaqSchema(data.faqSchema ?? []);
       setGenerated(true);
+      log.info('Content generated', { title: data.title, wordCount: countWords(data.content), contentType });
 
       // Auto-generate images
       const heroUrl = generateAIImageUrl(data.imagePrompts[0] || data.title, 1200, 630);
@@ -236,8 +272,10 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
     setKeywords([]);
     setImageUrls([]);
     setImagePrompts([]);
+    setFaqSchema([]);
     setGenerated(false);
     setTopic('');
+    setContentType('blog');
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -286,10 +324,32 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
                   <Sparkles className="h-4 w-4 text-primary" /> Generate with AI
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+                {/* Content Type Selector */}
+                <div className="flex gap-2 flex-wrap">
+                  {CONTENT_TYPES.map(ct => (
+                    <button
+                      key={ct.value}
+                      onClick={() => setContentType(ct.value)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                        contentType === ct.value
+                          ? 'border-primary/40 bg-primary/5 text-primary shadow-sm shadow-primary/10'
+                          : 'border-border bg-card hover:border-primary/20 text-muted-foreground'
+                      }`}
+                    >
+                      {ct.icon}
+                      <span className="font-medium">{ct.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {CONTENT_TYPES.find(ct => ct.value === contentType)?.description}
+                </p>
+
+                {/* Topic Input */}
                 <div className="flex gap-3">
                   <Input
-                    placeholder="Enter a topic, e.g. 'How to rank on Google in 2025'"
+                    placeholder={contentType === 'blog' ? "Enter a topic, e.g. 'How to rank on Google in 2025'" : contentType === 'landing-page' ? "Enter product/service, e.g. 'AI-powered SEO tool'" : "Enter product name, e.g. 'Wireless noise-canceling headphones'"}
                     value={topic}
                     onChange={e => setTopic(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && !generateMutation.isPending && topic.trim() && generateMutation.mutate(topic.trim())}
@@ -424,6 +484,26 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* FAQ Schema Preview */}
+                {faqSchema.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                      <HelpCircle className="h-4 w-4 text-muted-foreground" /> FAQ Schema ({faqSchema.length} questions)
+                    </label>
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                      {faqSchema.map((faq, i) => (
+                        <div key={i} className="p-3 bg-secondary/30 rounded-lg border border-primary/5">
+                          <p className="text-sm font-medium text-foreground">Q: {faq.question}</p>
+                          <p className="text-xs text-muted-foreground mt-1">A: {faq.answer}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      ✓ FAQ schema will be included when publishing — helps with People Also Ask rankings.
+                    </p>
                   </div>
                 )}
 

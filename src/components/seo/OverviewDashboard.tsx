@@ -2,13 +2,14 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Globe, FileText, Zap, Activity, ArrowRight,
-  Link2, Send, Plug, TrendingUp,
+  Link2, Send, Plug, TrendingUp, Calendar, Shield, Gauge, Layers,
 } from 'lucide-react';
 import { blink } from '@/blink/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getScheduledJobs, getPublishingHistory } from '@/lib/scheduler';
 
 interface OverviewProps { onNavigate: (view: string) => void }
 
@@ -109,6 +110,11 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
 
   const automationActive = automationSettings?.enabled === '1' || automationSettings?.enabled === 1;
 
+  // Scheduler stats
+  const scheduledJobs = getScheduledJobs();
+  const activeSchedules = scheduledJobs.filter(j => j.status === 'scheduled').length;
+  const publishHistory = getPublishingHistory(5);
+
   return (
     <div className="space-y-8">
       {/* Row 1 — Core stats */}
@@ -134,11 +140,12 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
           value={l6 ? null : String(publishedCount ?? 0)}
         />
         <StatCard
-          icon={<Plug className="h-5 w-5 text-primary" />}
-          label="Platforms"
-          value={l7 ? null : String(platformsCount ?? 0)}
-          cta={!platformsCount ? 'Connect' : undefined}
-          onCta={!platformsCount ? () => onNavigate('settings') : undefined}
+          icon={<Calendar className="h-5 w-5 text-violet-500" />}
+          label="Scheduled Jobs"
+          value={String(activeSchedules)}
+          sub={activeSchedules > 0 ? 'Pending publish' : 'No schedules'}
+          cta={activeSchedules === 0 ? 'Schedule' : undefined}
+          onCta={activeSchedules === 0 ? () => onNavigate('automation') : undefined}
         />
         <StatCard
           icon={<TrendingUp className="h-5 w-5 text-amber-500" />}

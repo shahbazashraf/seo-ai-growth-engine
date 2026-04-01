@@ -14,6 +14,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import toast from 'react-hot-toast';
 import { geminiGenerate, geminiGenerateJSON } from '@/lib/ai';
+import { createLogger, addBreadcrumb } from '@/lib/logger';
+
+const log = createLogger('Backlinks');
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
