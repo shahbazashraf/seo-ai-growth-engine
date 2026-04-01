@@ -26,17 +26,21 @@ const TYPE_LABEL: Record<ActivityItem['type'], string> = {
 export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
   /* ── Row 1 stats ── */
   const { data: auditCount,  isLoading: l1 } = useQuery<number>({ queryKey: ['audit-count'],
-    queryFn: async () => (await blink.db.table('audits').list({ limit: 1000 })).length });
+    queryFn: async () => {
+      return await blink.db.table('audits').count();
+    } });
 
   const { data: avgScore,    isLoading: l2 } = useQuery<number | null>({ queryKey: ['avg-score'],
     queryFn: async () => {
-      const rows = await blink.db.table<{ score: number }>('audits').list({ limit: 1000 });
+      const rows = await blink.db.table<{ score: number }>('audits').list({ select: ['score'] });
       if (!rows.length) return null;
       return Math.round(rows.reduce((a, r) => a + Number(r.score), 0) / rows.length);
     } });
 
   const { data: contentCount, isLoading: l3 } = useQuery<number>({ queryKey: ['content-count'],
-    queryFn: async () => (await blink.db.table('generated_content').list({ limit: 1000 })).length });
+    queryFn: async () => {
+      return await blink.db.table('generated_content').count();
+    } });
 
   const { data: automationSettings } = useQuery<{ enabled: string | number; frequency: string } | null>({
     queryKey: ['automation-settings'],
@@ -49,34 +53,31 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
   const { data: backlinksCount, isLoading: l5 } = useQuery<number>({
     queryKey: ['backlink-count'],
     queryFn: async () => {
-      const rows = await blink.db.table('backlinks').list({ limit: 1000 });
-      return rows.length;
+      return await blink.db.table('backlinks').count();
     },
   });
 
   const { data: publishedCount, isLoading: l6 } = useQuery<number>({
     queryKey: ['published-count'],
     queryFn: async () => {
-      const rows = await blink.db.table<{ status: string }>('content_lab').list({ limit: 1000 });
-      return rows.filter(r => r.status === 'published').length;
+      return await blink.db.table('content_lab').count({ where: { status: 'published' } });
     },
   });
 
   const { data: platformsCount, isLoading: l7 } = useQuery<number>({
     queryKey: ['platforms-connected-count'],
     queryFn: async () => {
-      const rows = await blink.db.table('platform_credentials').list({ limit: 100 });
-      return rows.length;
+      return await blink.db.table('platform_credentials').count();
     },
   });
 
   const { data: distRate, isLoading: l8 } = useQuery<string>({
     queryKey: ['distribution-rate'],
     queryFn: async () => {
-      const rows = await blink.db.table<{ status: string }>('distribution_logs').list({ limit: 1000 });
-      if (!rows.length) return '—';
-      const success = rows.filter(r => r.status === 'success').length;
-      return `${Math.round((success / rows.length) * 100)}%`;
+      const total = await blink.db.table('distribution_logs').count();
+      if (total === 0) return '—';
+      const success = await blink.db.table('distribution_logs').count({ where: { status: 'success' } });
+      return `${Math.round((success / total) * 100)}%`;
     },
   });
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Search, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  Info, Globe, ArrowRight, Clock, RotateCcw
+  Info, Globe, ArrowRight, Clock, RotateCcw, Zap
 } from 'lucide-react';
 import { blink } from '@/blink/client';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import toast from 'react-hot-toast';
 import { geminiGenerateJSON } from '@/lib/ai';
+import { getCachedAudit, setCachedAudit, invalidateAuditCache } from '@/lib/audit-cache';
 
 interface AuditIssue {
   check: string;
@@ -88,6 +89,8 @@ export const SiteAudit = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState('');
+  const [skipCache, setSkipCache] = useState(false);
+  const [cachedResult, setCachedResult] = useState<string | null>(null);
 
   const { data: history = [], refetch: refetchHistory } = useQuery<AuditRecord[]>({
     queryKey: ['audits-history'],
@@ -125,6 +128,20 @@ export const SiteAudit = () => {
     setResult(null);
     setLoading(true);
     setStep(0);
+    setCachedResult(null);
+
+    // Check cache first (unless skipped)
+    if (!skipCache) {
+      const cached = getCachedAudit(url);
+      if (cached) {
+        setResult(cached);
+        setCachedResult('This result was cached less than 1 hour ago. ');
+        setLoading(false);
+        toast.success('Loaded from cache (< 1h old)');
+        return;
+      }
+    }
+    setSkipCache(false);
 
     const stepDurations = [600, 800, 700, 1200, 400];
     let stepIndex = 0;
@@ -259,7 +276,11 @@ export const SiteAudit = () => {
       timers.forEach(clearTimeout);
       setStep(STEPS.length - 1);
 
-      setResult({ score, issues, recommendations, responseTime, wordCount });
+      const auditResult = { score, issues, recommendations, responseTime, wordCount };
+      setResult(auditResult);
+
+      // Cache the result locally
+      setCachedAudit(targetUrl, auditResult);
 
       // Save to DB
       try {
@@ -370,11 +391,17 @@ export const SiteAudit = () => {
                 <span>Words: ~{result.wordCount}</span>
               </div>
             </div>
+            {cachedResult && (
+              <div className="w-full text-xs bg-blue-50 border border-blue-200 rounded p-2 text-blue-700 flex items-start gap-1.5">
+                <Zap className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>{cachedResult}<button onClick={() => { setSkipCache(true); runAudit({ preventDefault: () => {} } as any); }} className="underline hover:no-underline ml-0.5">Refresh</button></span>
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
               className="w-full"
-              onClick={() => { setResult(null); setUrl(''); }}
+              onClick={() => { setResult(null); setUrl(''); invalidateAuditCache(url); }}
             >
               <RotateCcw className="h-3 w-3 mr-2" /> New Audit
             </Button>

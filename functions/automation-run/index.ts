@@ -6,6 +6,71 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/**
+ * Validates required environment variables at startup
+ */
+function validateEnv() {
+  const required = ["BLINK_PROJECT_ID", "BLINK_SECRET_KEY", "OPENROUTER_API_KEY"];
+  const missing = required.filter(key => !Deno.env.get(key));
+  
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missing.join(", ")}. ` +
+      `Please add them to your project settings.`
+    );
+  }
+}
+
+/**
+ * Retry wrapper for fetch with exponential backoff
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxAttempts = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      
+      // Retry on 5xx errors only
+      if (response.status >= 500 && attempt < maxAttempts) {
+        lastError = new Error(`Server error (${response.status}) on attempt ${attempt}`);
+        const delay = 100 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt < maxAttempts) {
+        const delay = 100 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw new Error(`Failed after ${maxAttempts} attempts: ${lastError?.message}`);
+}
+
+// Validate env at module load
+try {
+  validateEnv();
+} catch (error) {
+  console.error("FATAL: Environment validation failed:", error);
+  throw error;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -20,8 +85,8 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { siteUrl } = await req.json();
-    if (!siteUrl) {
-      return new Response(JSON.stringify({ error: "siteUrl is required" }), {
+    if (!siteUrl || siteUrl.trim() === "") {
+      return new Response(JSON.stringify({ error: "siteUrl is required and cannot be empty" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -64,38 +129,51 @@ Requirements:
 
 Respond STRICTLY with a JSON object. Ensure the JSON is valid and has exactly the following properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), and "wordCount" (number). Do not include any markdown formatting like \`\`\`json around the response.`;
 
-    const openRouterRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer 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",
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "deepseek/deepseek-chat",
-        response_format: { type: "json_object" },
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
+    const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
+    if (!openRouterApiKey) {
+      throw new Error("OPENROUTER_API_KEY environment variable is not set");
+    }
+
+    const openRouterRes = await fetchWithRetry(
+      "https://openrouter.ai/api/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "deepseek/deepseek-chat",
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: prompt }]
+        })
+      }
+    );
 
     if (!openRouterRes.ok) {
       const errText = await openRouterRes.text();
-      throw new Error(`OpenRouter API error: ${errText}`);
+      throw new Error(
+        `OpenRouter API error (${openRouterRes.status}): ${errText.substring(0, 200)}`
+      );
     }
 
     const aiData = await openRouterRes.json();
     let generated;
     try {
-      const contentStr = aiData.choices[0].message.content;
+      const contentStr = aiData.choices?.[0]?.message?.content;
+      if (!contentStr) {
+        throw new Error("OpenRouter API returned no content");
+      }
       // Strip markdown json blocks if the model still outputs them
       const cleanJsonStr = contentStr.replace(/```json\n?|\n?```/g, "").trim();
       generated = JSON.parse(cleanJsonStr);
     } catch (e) {
-      console.error("Failed to parse AI response:", aiData.choices[0]?.message?.content);
+      console.error("Failed to parse AI response:", aiData.choices?.[0]?.message?.content);
       throw new Error("AI failed to generate valid JSON content");
     }
 
     if (!generated || !generated.title) {
-      throw new Error("AI failed to generate complete content");
+      throw new Error("AI failed to generate complete content with required fields");
     }
 
     // Calculate actual word count
@@ -103,7 +181,7 @@ Respond STRICTLY with a JSON object. Ensure the JSON is valid and has exactly th
       ? generated.content.replace(/[#*`\[\]]/g, "").split(/\s+/).filter((w: string) => w.length > 0).length
       : generated.wordCount || 0;
 
-    // Save to generated_content table and content_lab
+    // Save to generated_content table (no userId in this flow)
     try {
       await blink.db.table("generated_content").create({
         siteUrl: targetUrl,
@@ -113,22 +191,9 @@ Respond STRICTLY with a JSON object. Ensure the JSON is valid and has exactly th
         metaDescription: generated.metaDescription,
         wordCount: actualWordCount,
       });
-
-      await blink.db.table("content_lab").create({
-        title: generated.title,
-        content: generated.content,
-        metaDescription: generated.metaDescription,
-        keywords: JSON.stringify(generated.keywords || []),
-        imageUrls: "[]",
-        status: "draft",
-        platformsPublished: "{}",
-        wordCount: actualWordCount,
-        userId: "",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
     } catch (dbErr) {
       console.error("DB save error:", dbErr);
+      // Don't fail the entire operation if DB save fails
     }
 
     return new Response(
@@ -142,9 +207,10 @@ Respond STRICTLY with a JSON object. Ensure the JSON is valid and has exactly th
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Automation run error:", error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("Automation run error:", errorMsg);
     return new Response(
-      JSON.stringify({ error: (error as Error).message || "Content generation failed" }),
+      JSON.stringify({ error: errorMsg || "Content generation failed" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
