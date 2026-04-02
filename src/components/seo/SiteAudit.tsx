@@ -148,6 +148,7 @@ export const SiteAudit = () => {
         issues: issues.map((i: any) => ({ ...i, category: i.category || 'technical' })),
         recommendations,
         pageSpeedHints: [],
+        screenshots: { desktop: '', mobile: '' }
       });
       toast.success('Loaded audit details from history');
     } catch {
@@ -399,7 +400,7 @@ export const SiteAudit = () => {
 
           {/* Detailed Analysis Tabs */}
           <Card>
-            <Tabs value={detailsTab} onValueChange={v => setDetailsTab(v as typeof detailsTab)}>
+            <Tabs value={detailsTab} onValueChange={v => setDetailsTab(v as any)}>
               <CardHeader className="pb-0">
                 <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto w-full justify-start gap-0 flex-wrap">
                   <TabsTrigger value="issues" className="gap-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 pb-3 pt-1 text-muted-foreground text-xs">
@@ -420,10 +421,46 @@ export const SiteAudit = () => {
                   <TabsTrigger value="schema" className="gap-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 pb-3 pt-1 text-muted-foreground text-xs">
                     <Code2 className="h-3 w-3" /> Schema
                   </TabsTrigger>
+                  <TabsTrigger value="screenshots" className="gap-1 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 pb-3 pt-1 text-muted-foreground text-xs">
+                    <Image className="h-3 w-3" /> Visuals
+                  </TabsTrigger>
                 </TabsList>
               </CardHeader>
 
               <CardContent className="pt-4">
+                {/* Visuals Tab */}
+                <TabsContent value="screenshots" className="mt-0">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-slate-300">Desktop View</h3>
+                      <div className="rounded-lg border border-slate-800 overflow-hidden bg-black/40 aspect-video relative flex items-center justify-center group shadow-xl">
+                        {result.screenshots?.desktop ? (
+                          <img src={result.screenshots.desktop} alt="Desktop View" className="w-full h-full object-cover object-top transition-transform duration-700 hover:scale-[1.02]" loading="lazy" />
+                        ) : (
+                          <div className="text-muted-foreground text-xs flex flex-col items-center gap-2">
+                            <Image className="h-5 w-5 opacity-50" />
+                            <span>Preview unavailable</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h3 className="text-sm font-semibold text-slate-300">Mobile View</h3>
+                      <div className="rounded-[2.5rem] border-[8px] border-slate-900 overflow-hidden bg-black/40 mx-auto w-[280px] h-[550px] relative flex items-center justify-center shadow-2xl">
+                        <div className="absolute top-0 inset-x-0 h-6 bg-slate-900 rounded-b-xl z-20 flex justify-center w-1/2 mx-auto" />
+                        {result.screenshots?.mobile ? (
+                          <img src={result.screenshots.mobile} alt="Mobile View" className="w-full h-full object-cover object-top" loading="lazy" />
+                        ) : (
+                          <div className="text-muted-foreground text-xs flex flex-col items-center gap-2">
+                            <Image className="h-5 w-5 opacity-50" />
+                            <span>Preview unavailable</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
                 {/* Issues Tab */}
                 <TabsContent value="issues" className="mt-0">
                   <div className="flex gap-2 mb-4 flex-wrap">

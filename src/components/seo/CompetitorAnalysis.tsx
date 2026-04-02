@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import toast from 'react-hot-toast';
 import { geminiGenerateJSON } from '@/lib/ai';
+import { runSerpScrape } from '@/lib/serp-analyzer';
 import { createLogger, addBreadcrumb } from '@/lib/logger';
 
 const log = createLogger('CompetitorAnalysis');
@@ -53,37 +54,48 @@ export function CompetitorAnalysis() {
     try {
       log.info('Starting competitor analysis', { keyword });
       
+      // 1. Perform REAL scraping
+      const realCompetitors = await runSerpScrape(keyword);
+      const competitorsContext = realCompetitors.map((c, i) => 
+        `Rank ${i+1}: URL=${c.url}, Words=${c.wordCount}, Headings=${c.headings.slice(0, 5).join(' | ')}`
+      ).join('\n');
+
+      // 2. Perform AI Analysis on real data
       const prompt = `Perform a deep SEO topic and competitor SERP analysis for the keyword: "${keyword}".
       
-Analyze the current likely top-ranking pages on Google for this query. Provide realistic estimations of what is required to rank on page 1.
-
-Return ONLY a valid JSON object matching this exact structure:
-{
-  "keyword": "${keyword}",
-  "searchIntent": "informational", // strictly one of: informational, navigational, transactional, commercial
-  "searchVolumeEstimate": "10k - 50k/mo",
-  "difficultyScore": 65, // out of 100
-  "averageWordCount": 2400,
-  "targetReadability": "High School",
-  "topCompetitors": [
-    {
-      "rank": 1,
-      "url": "https://example.com/topic",
-      "domainAuthority": 88,
-      "wordCount": 3100,
-      "contentGaps": ["Lacks video format", "Doesn't explain pricing clearly"]
-    },
-    // exactly 5 competitors
-  ],
-  "recommendedHeadings": [
-    { "level": "H2", "text": "What is ${keyword}?" },
-    // provide 6-8 structured headings
-  ],
-  "nlpKeywords": [
-    { "word": "related term", "importance": 90 },
-    // provide exactly 10 terms with importance (1-100)
-  ]
-}`;
+      Here is the REAL scraped data of the top ranking competitors on Google:
+      ${competitorsContext}
+      
+      Analyze these real pages to determine the search intent, difficulty, and content gaps. 
+      Estimate Domain Authority visually if unknown.
+      
+      Return ONLY a valid JSON object matching this exact structure:
+      {
+        "keyword": "${keyword}",
+        "searchIntent": "informational", // strictly one of: informational, navigational, transactional, commercial
+        "searchVolumeEstimate": "10k - 50k/mo",
+        "difficultyScore": 65, // out of 100
+        "averageWordCount": 2400,
+        "targetReadability": "High School",
+        "topCompetitors": [
+          {
+            "rank": 1,
+            "url": "https://example.com/topic",
+            "domainAuthority": 88,
+            "wordCount": 3100,
+            "contentGaps": ["Lacks video format", "Doesn't explain pricing clearly"]
+          },
+          // exactly match length of real competitors array provided
+        ],
+        "recommendedHeadings": [
+          { "level": "H2", "text": "What is ${keyword}?" },
+          // provide 6-8 structured headings
+        ],
+        "nlpKeywords": [
+          { "word": "related term", "importance": 90 },
+          // provide exactly 10 terms with importance (1-100)
+        ]
+      }`;
 
       const aiData = await geminiGenerateJSON<CompetitorResult>(prompt);
       

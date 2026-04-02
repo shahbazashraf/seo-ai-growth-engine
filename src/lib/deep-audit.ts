@@ -91,6 +91,10 @@ export interface DeepAuditResult {
   issues: AuditIssue[];
   recommendations: string[];
   pageSpeedHints: string[];
+  screenshots: {
+    desktop: string;
+    mobile: string;
+  };
 }
 
 export interface AuditIssue {
@@ -294,7 +298,7 @@ function getPageSpeedHints(html: string, responseTime: number): string[] {
 
   // Large inline styles
   const styleBlocks = html.match(/<style[\s\S]*?<\/style>/gi) || [];
-  const totalStyleLength = styleBlocks.reduce((acc, s) => acc + s.length, 0);
+  const totalStyleLength = (styleBlocks as string[]).reduce((acc: number, s: string) => acc + s.length, 0);
   if (totalStyleLength > 50000) {
     hints.push('Large inline CSS detected — consider extracting to external stylesheet');
   }
@@ -600,5 +604,9 @@ export async function runDeepAudit(targetUrl: string): Promise<DeepAuditResult> 
     issues,
     recommendations: [], // Will be filled by AI
     pageSpeedHints,
+    screenshots: {
+      desktop: `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}&screenshot=true&embed=screenshot.url`,
+      mobile: `https://api.microlink.io?url=${encodeURIComponent(targetUrl)}&screenshot=true&embed=screenshot.url&viewport.width=375&viewport.height=812&viewport.isMobile=true`,
+    }
   };
 }
