@@ -254,8 +254,8 @@ function extractStructuredData(html: string): StructuredDataInfo {
 function calculateKeywordDensity(html: string): KeywordDensity[] {
   // Strip HTML tags, scripts, styles
   const textOnly = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -380,18 +380,20 @@ export async function runDeepAudit(targetUrl: string): Promise<DeepAuditResult> 
   const fetchStart = Date.now();
   try {
     const res = await fetch(targetUrl, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(8000),
       redirect: 'follow',
     });
     html = await res.text();
+    html = html.substring(0, 300000); // Hard cap at 300KB to prevent browser regex crashes
     fetchOk = res.ok;
   } catch {
     try {
       const proxyRes = await fetch(
         `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        { signal: AbortSignal.timeout(15000) }
+        { signal: AbortSignal.timeout(10000) }
       );
       html = await proxyRes.text();
+      html = html.substring(0, 300000); // Hard cap at 300KB
       fetchOk = proxyRes.ok;
     } catch {
       fetchOk = false;
@@ -409,10 +411,12 @@ export async function runDeepAudit(targetUrl: string): Promise<DeepAuditResult> 
   const keywordDensity = calculateKeywordDensity(html);
   const pageSpeedHints = getPageSpeedHints(html, responseTime);
 
-  // Calculate word count
-  const bodyText = html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
+  // Calculate word count (simplified extraction to prevent regex engine freezing)
+  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
+  const bodyText = bodyHtml
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
