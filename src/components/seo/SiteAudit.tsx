@@ -224,20 +224,30 @@ export const SiteAudit = () => {
       // Cache result
       setCachedAudit(targetUrl, auditResult);
 
-      // Save to DB
+      // Save to DB (with 4 second timeout fallback to prevent hanging)
       try {
-        await blink.db.table('audits').create({
-          url: targetUrl,
-          score: auditResult.score,
-          issues: JSON.stringify(auditResult.issues),
-          recommendations: JSON.stringify(auditResult.recommendations),
-          createdAt: new Date().toISOString(),
-        });
+        await Promise.race([
+          blink.db.table('audits').create({
+            url: targetUrl,
+            score: auditResult.score,
+            issues: JSON.stringify(auditResult.issues),
+            recommendations: JSON.stringify(auditResult.recommendations),
+            createdAt: new Date().toISOString(),
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('DB Save timeout')), 4000))
+        ]);
       } catch (dbErr) {
-        log.error('DB save error', { error: String(dbErr) });
+        log.error('DB save error or timeout', { error: String(dbErr) });
       }
 
-      await refetchHistory();
+      try {
+        await Promise.race([
+          refetchHistory(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('History fetch timeout')), 4000))
+        ]);
+      } catch (histErr) {
+        log.error('History fetch timed out', { error: String(histErr) });
+      }
       toast.success('Deep audit complete!');
       addBreadcrumb('audit_completed', 'SiteAudit', { url: targetUrl, score: auditResult.score });
     } catch (err: any) {

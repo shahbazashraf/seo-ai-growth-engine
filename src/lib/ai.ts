@@ -54,6 +54,7 @@ async function fetchOpenRouter(prompt: string): Promise<string> {
       model: 'deepseek/deepseek-chat',
       messages: [{ role: 'user', content: prompt }],
     }),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
@@ -87,6 +88,7 @@ async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
       }),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (res.status === 429 && attempt < maxRetries) {

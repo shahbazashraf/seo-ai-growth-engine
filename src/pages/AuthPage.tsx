@@ -1,22 +1,31 @@
 import React, { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Zap, Loader2, Mail, Lock, CheckCircle2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import toast from 'react-hot-toast';
-import { blink } from '@/blink/client';
+import { useAuth } from '@/contexts/AuthContext';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 
 export function AuthPage() {
   const navigate = useNavigate();
+  const { signInWithGoogle, user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+
+  // Redirect if already logged in
+  React.useEffect(() => {
+    if (user) {
+      navigate({ to: '/dashboard' });
+    }
+  }, [user, navigate]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,25 +37,19 @@ export function AuthPage() {
     setLoading(true);
     try {
       if (isLogin) {
-        // Assume blink.auth has standard signin
-        // Using workaround/mock if blink auth doesn't natively support password sign-in
-        // Adjust syntax based on actual Blink SDK capabilities
-        if ('signIn' in blink.auth) {
-          await (blink.auth as any).signIn({ email, password });
-        } else {
-          // If not natively supported by typing, we'll store a mock token for development
-          localStorage.setItem('blink_local_mock_token', 'token_' + Date.now());
-        }
+        await signInWithEmailAndPassword(auth, email, password);
         toast.success('Welcome back!');
         navigate({ to: '/dashboard' });
       } else {
-        if ('signUp' in blink.auth) {
-          await (blink.auth as any).signUp({ email, password, options: { data: { name } } });
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        if (name) {
+          await updateProfile(userCredential.user, { displayName: name });
         }
-        toast.success('Account created! Please log in.');
-        setIsLogin(true);
+        toast.success('Account created successfully!');
+        navigate({ to: '/dashboard' });
       }
     } catch (err: any) {
+      console.error(err);
       toast.error(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
@@ -56,15 +59,11 @@ export function AuthPage() {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     try {
-      if ('signInWithOAuth' in blink.auth) {
-        await (blink.auth as any).signInWithOAuth({ provider: 'google' });
-      } else {
-        // Fallback mock check
-        localStorage.setItem('blink_local_mock_token', 'google_token_' + Date.now());
-        navigate({ to: '/dashboard' });
-      }
+      await signInWithGoogle();
+      navigate({ to: '/dashboard' });
     } catch (err: any) {
-      toast.error('Google sign-in failed');
+      console.error(err);
+      toast.error('Google sign-in failed: ' + err.message);
     } finally {
       setLoading(false);
     }

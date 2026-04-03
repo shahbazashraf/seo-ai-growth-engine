@@ -15,6 +15,9 @@ import { InternalLinkGraph } from '@/components/seo/InternalLinkGraph';
 import { ProgrammaticSEO } from '@/components/seo/ProgrammaticSEO';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { useProjects } from '@/hooks/useData';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from '@tanstack/react-router';
+import { LogOut } from 'lucide-react';
 
 type View = 'overview' | 'audit' | 'competitor' | 'internal_links' | 'programmatic' | 'automation' | 'content' | 'backlinks' | 'distribution' | 'settings';
 
@@ -48,6 +51,17 @@ export const Dashboard = () => {
   const [distContentId, setDistContentId] = useState<string>('');
   const { data: projects = [] } = useProjects();
   const projectId = projects[0]?.id ?? 'demo-project';
+  const { logout, user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate({ to: '/' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const renderContent = () => {
     switch (active) {
@@ -115,6 +129,16 @@ export const Dashboard = () => {
           <div className="mt-3 p-3 bg-primary/5 rounded-xl border border-primary/10">
             <p className="text-xs font-semibold text-primary mb-1">FREE PLAN</p>
             <p className="text-xs text-muted-foreground">Unlimited audits &amp; generation</p>
+          </div>
+
+          <div className="mt-6 border-t pt-3">
+            <p className="text-xs font-semibold text-muted-foreground truncate mb-2 px-3">{user?.email}</p>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-red-400 hover:bg-red-500/10 hover:text-red-300"
+            >
+              <LogOut size={18} /> Logout
+            </button>
           </div>
         </div>
       </aside>

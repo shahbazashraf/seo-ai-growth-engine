@@ -108,47 +108,51 @@ export interface AuditIssue {
 // ─── HTML Parsing Utilities ──────────────────────────────────────────────────
 
 function extractMetaTags(html: string, url: string): MetaTagInfo {
-  const get = (pattern: RegExp): string => {
-    const match = html.match(pattern);
-    return match ? match[1]?.trim() || '' : '';
-  };
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(html, "text/html");
+  } catch {
+    // Fallback empty if parser fails
+    return {
+      title: '', titleLength: 0, description: '', descriptionLength: 0,
+      ogTitle: '', ogDescription: '', ogImage: '', twitterCard: '', twitterTitle: '',
+      canonical: '', viewport: false, robots: '', charset: ''
+    };
+  }
 
-  const title = get(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const description = get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
-    || get(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i);
-
+  const title = doc.querySelector('title')?.textContent || '';
+  const description = doc.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+  
   return {
     title,
     titleLength: title.length,
     description,
     descriptionLength: description.length,
-    ogTitle: get(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i),
-    ogDescription: get(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i),
-    ogImage: get(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i),
-    twitterCard: get(/<meta[^>]+name=["']twitter:card["'][^>]+content=["']([^"']+)["']/i),
-    twitterTitle: get(/<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']/i),
-    canonical: get(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i),
-    viewport: /<meta[^>]+name=["']viewport["']/i.test(html),
-    robots: get(/<meta[^>]+name=["']robots["'][^>]+content=["']([^"']+)["']/i),
-    charset: /<meta[^>]+charset=/i.test(html) ? 'detected' : '',
+    ogTitle: doc.querySelector('meta[property="og:title"]')?.getAttribute('content') || '',
+    ogDescription: doc.querySelector('meta[property="og:description"]')?.getAttribute('content') || '',
+    ogImage: doc.querySelector('meta[property="og:image"]')?.getAttribute('content') || '',
+    twitterCard: doc.querySelector('meta[name="twitter:card"]')?.getAttribute('content') || '',
+    twitterTitle: doc.querySelector('meta[name="twitter:title"]')?.getAttribute('content') || '',
+    canonical: doc.querySelector('link[rel="canonical"]')?.getAttribute('href') || '',
+    viewport: !!doc.querySelector('meta[name="viewport"]'),
+    robots: doc.querySelector('meta[name="robots"]')?.getAttribute('content') || '',
+    charset: doc.querySelector('meta[charset]') ? 'detected' : '',
   };
 }
 
 function extractHeadings(html: string): HeadingInfo[] {
-  const headingRegex = /<(h[1-6])[^>]*>([\s\S]*?)<\/\1>/gi;
   const headings: HeadingInfo[] = [];
-  let match;
-
-  while ((match = headingRegex.exec(html)) !== null) {
-    const tag = match[1].toLowerCase();
-    const text = match[2].replace(/<[^>]+>/g, '').trim();
-    headings.push({
-      tag,
-      text,
-      level: parseInt(tag[1]),
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const hTags = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    hTags.forEach(el => {
+      headings.push({
+        tag: el.tagName.toLowerCase(),
+        text: el.textContent?.trim() || '',
+        level: parseInt(el.tagName[1]),
+      });
     });
-  }
-
+  } catch { }
   return headings;
 }
 
@@ -173,76 +177,74 @@ function validateHeadingHierarchy(headings: HeadingInfo[]): boolean {
 }
 
 function extractLinks(html: string, baseUrl: string): LinkInfo[] {
-  const linkRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   const links: LinkInfo[] = [];
-  let match;
-  let baseDomain = '';
-  try { baseDomain = new URL(baseUrl).hostname; } catch { /* ignore */ }
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const aTags = doc.querySelectorAll('a[href]');
+    let baseDomain = '';
+    try { baseDomain = new URL(baseUrl).hostname; } catch { /* ignore */ }
 
-  while ((match = linkRegex.exec(html)) !== null) {
-    const href = match[1];
-    const text = match[2].replace(/<[^>]+>/g, '').trim();
-    const fullTag = match[0];
-
-    let type: 'internal' | 'external' = 'external';
-    try {
-      const linkUrl = new URL(href, baseUrl);
-      if (linkUrl.hostname === baseDomain) type = 'internal';
-    } catch {
-      if (href.startsWith('/') || href.startsWith('#')) type = 'internal';
-    }
-
-    links.push({
-      href,
-      text: text.substring(0, 100),
-      type,
-      nofollow: /rel=["'][^"']*nofollow/i.test(fullTag),
+    aTags.forEach(el => {
+      const href = el.getAttribute('href') || '';
+      const text = el.textContent?.trim().substring(0, 100) || '';
+      let type: 'internal' | 'external' = 'external';
+      try {
+        const linkUrl = new URL(href, baseUrl);
+        if (linkUrl.hostname === baseDomain) type = 'internal';
+      } catch {
+        if (href.startsWith('/') || href.startsWith('#')) type = 'internal';
+      }
+      links.push({
+        href,
+        text,
+        type,
+        nofollow: el.getAttribute('rel')?.includes('nofollow') || false,
+      });
     });
-  }
-
+  } catch {}
   return links;
 }
 
 function extractImages(html: string): ImageInfo[] {
-  const imgRegex = /<img[^>]+>/gi;
   const images: ImageInfo[] = [];
-  let match;
-
-  while ((match = imgRegex.exec(html)) !== null) {
-    const tag = match[0];
-    const srcMatch = tag.match(/src=["']([^"']+)["']/i);
-    const altMatch = tag.match(/alt=["']([^"']*)["']/i);
-
-    images.push({
-      src: srcMatch?.[1] || '',
-      alt: altMatch?.[1] || '',
-      hasAlt: altMatch != null && altMatch[1].length > 0,
-      isLazy: /loading=["']lazy["']/i.test(tag) || /data-src/i.test(tag),
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const imgTags = doc.querySelectorAll('img');
+    imgTags.forEach(el => {
+      const alt = el.getAttribute('alt') || '';
+      images.push({
+        src: el.getAttribute('src') || '',
+        alt,
+        hasAlt: el.hasAttribute('alt') && alt.trim().length > 0,
+        isLazy: el.getAttribute('loading') === 'lazy' || el.hasAttribute('data-src'),
+      });
     });
-  }
-
+  } catch {}
   return images;
 }
 
 function extractStructuredData(html: string): StructuredDataInfo {
-  const jsonLdRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   const schemas: string[] = [];
   const rawJsonLd: string[] = [];
-  let match;
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
+    scripts.forEach(script => {
+      const raw = script.textContent?.trim() || '';
+      if (!raw) return;
+      rawJsonLd.push(raw);
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed['@type']) schemas.push(parsed['@type']);
+        if (Array.isArray(parsed['@graph'])) {
+          parsed['@graph'].forEach((item: any) => {
+            if (item['@type']) schemas.push(item['@type']);
+          });
+        }
+      } catch { /* invalid */ }
+    });
+  } catch {}
 
-  while ((match = jsonLdRegex.exec(html)) !== null) {
-    const raw = match[1].trim();
-    rawJsonLd.push(raw);
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed['@type']) schemas.push(parsed['@type']);
-      if (Array.isArray(parsed['@graph'])) {
-        parsed['@graph'].forEach((item: any) => {
-          if (item['@type']) schemas.push(item['@type']);
-        });
-      }
-    } catch { /* invalid JSON-LD */ }
-  }
 
   return {
     hasJsonLd: rawJsonLd.length > 0,
@@ -411,16 +413,14 @@ export async function runDeepAudit(targetUrl: string): Promise<DeepAuditResult> 
   const keywordDensity = calculateKeywordDensity(html);
   const pageSpeedHints = getPageSpeedHints(html, responseTime);
 
-  // Calculate word count (simplified extraction to prevent regex engine freezing)
-  const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  const bodyHtml = bodyMatch ? bodyMatch[1] : html;
-  const bodyText = bodyHtml
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  const wordCount = bodyText.split(/\s+/).filter(w => w.length > 2).length;
+  let wordCount = 0;
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const bodyText = doc.body?.textContent?.replace(/\s+/g, ' ').trim() || '';
+    wordCount = bodyText.split(' ').filter(w => w.length > 2).length;
+  } catch {
+    wordCount = html.length / 5; // crude fallback
+  }
 
   // ── Run all checks ──────────────────────────────────────────────────────
 

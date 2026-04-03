@@ -1,27 +1,43 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   createRouter, 
   createRoute, 
   createRootRoute, 
   RouterProvider, 
-  Outlet 
+  Outlet,
+  useNavigate
 } from '@tanstack/react-router';
 import { LandingPage } from './pages/LandingPage';
 import { Dashboard } from './pages/Dashboard';
 import { AuthPage } from './pages/AuthPage';
 import { Toaster } from 'react-hot-toast';
-import { blink } from './blink/client';
-import { useNavigate } from '@tanstack/react-router';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-// Authentication bypassed as requested
+// Protected Route Wrapper
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate({ to: '/auth' });
+    }
+  }, [user, loading, navigate]);
+
+  if (loading) {
+    return <div className="min-h-screen bg-[#020817] flex items-center justify-center text-white">Loading...</div>;
+  }
+
+  return user ? <>{children}</> : null;
+}
 
 // Create a root route
 const rootRoute = createRootRoute({
   component: () => (
-    <>
+    <AuthProvider>
       <Outlet />
       <Toaster position="top-right" />
-    </>
+    </AuthProvider>
   ),
 });
 
@@ -35,7 +51,11 @@ const indexRoute = createRoute({
 const dashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/dashboard',
-  component: Dashboard,
+  component: () => (
+    <ProtectedRoute>
+      <Dashboard />
+    </ProtectedRoute>
+  ),
 });
 
 const authRoute = createRoute({
