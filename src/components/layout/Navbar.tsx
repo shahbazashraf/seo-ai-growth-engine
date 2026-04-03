@@ -21,10 +21,10 @@ export const Navbar = () => {
             <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Pricing</Link>
             <Link to="/" className="text-sm font-medium hover:text-primary transition-colors">Resources</Link>
             <div className="flex items-center space-x-4">
-              <Link to="/dashboard">
+              <Link to="/auth">
                 <Button variant="ghost" size="sm">Sign In</Button>
               </Link>
-              <Link to="/dashboard">
+              <Link to="/auth">
                 <Button size="sm">Get Started</Button>
               </Link>
             </div>
@@ -48,10 +48,10 @@ export const Navbar = () => {
             <Link to="/" className="block text-sm font-medium hover:text-primary px-2 py-1">Pricing</Link>
             <Link to="/" className="block text-sm font-medium hover:text-primary px-2 py-1">Resources</Link>
             <div className="flex flex-col space-y-2 pt-4">
-              <Link to="/dashboard" className="w-full">
+              <Link to="/auth" className="w-full">
                 <Button variant="ghost" className="w-full justify-start">Sign In</Button>
               </Link>
-              <Link to="/dashboard" className="w-full">
+              <Link to="/auth" className="w-full">
                 <Button className="w-full">Get Started</Button>
               </Link>
             </div>

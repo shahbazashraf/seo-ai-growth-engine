@@ -32,7 +32,7 @@ export const LandingPage = () => {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-16">
-              <Link to="/dashboard">
+              <Link to="/auth">
                 <Button size="lg" className="h-14 px-8 text-lg font-medium shadow-lg shadow-primary/20">
                   Start Growing Now <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
@@ -90,7 +90,7 @@ export const LandingPage = () => {
           <p className="text-xl text-primary-foreground/80 mb-10 max-w-xl mx-auto relative z-10">
             Join thousands of websites scaling their organic traffic with the AI Growth Engine.
           </p>
-          <Link to="/dashboard">
+          <Link to="/auth">
             <Button size="lg" variant="secondary" className="h-14 px-10 text-lg relative z-10">
               Get Started for Free
             </Button>
