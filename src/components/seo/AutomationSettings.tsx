@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
@@ -50,7 +50,7 @@ export function AutomationSettings({ projectId }: { projectId: string }) {
   const { data: settings, isLoading } = useQuery({
     queryKey: ['automation-settings'],
     queryFn: async () => {
-      const rows = await blink.db.table<any>('automation_settings').list({
+      const rows = await localDB.table<any>('automation_settings').list({
         orderBy: { createdAt: 'asc' },
         limit: 1,
       });
@@ -62,7 +62,7 @@ export function AutomationSettings({ projectId }: { projectId: string }) {
   const { data: history = [], refetch: refetchHistory } = useQuery({
     queryKey: ['generated-content-history'],
     queryFn: async () => {
-      const rows = await blink.db.table<any>('generated_content').list({
+      const rows = await localDB.table<any>('generated_content').list({
         orderBy: { createdAt: 'desc' },
         limit: 10,
       });
@@ -73,9 +73,9 @@ export function AutomationSettings({ projectId }: { projectId: string }) {
   const settingsMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
       if (settings?.id) {
-        return await blink.db.table('automation_settings').update(settings.id, updates);
+        return await localDB.table('automation_settings').update(settings.id, updates);
       }
-      return await blink.db.table('automation_settings').create({ ...updates });
+      return await localDB.table('automation_settings').create({ ...updates });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['automation-settings'] });

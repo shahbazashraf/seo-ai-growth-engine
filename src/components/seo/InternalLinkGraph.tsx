@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import toast from 'react-hot-toast';
 import { geminiGenerateJSON } from '@/lib/ai';
 import { createLogger, addBreadcrumb } from '@/lib/logger';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 
 const log = createLogger('InternalLinkGraph');
 
@@ -53,7 +53,7 @@ export function InternalLinkGraph() {
   // Auto-fill from project if empty
   const { data: projects = [] } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => blink.db.table('projects').list()
+    queryFn: () => localDB.table('projects').list()
   });
 
   React.useEffect(() => {

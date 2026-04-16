@@ -4,7 +4,7 @@ import {
   Key, Radio, Globe, Copy, Clock, ChevronDown, Zap,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -605,19 +605,19 @@ export function DistributionEngine({
   const { data: contentList = [], isLoading: loadingContent } = useQuery<ContentLabRow[]>({
     queryKey: ['content_lab'],
     queryFn: () =>
-      blink.db.table<ContentLabRow>('content_lab').list({ orderBy: { createdAt: 'desc' } }),
+      localDB.table<ContentLabRow>('content_lab').list({ orderBy: { createdAt: 'desc' } }),
   });
 
   const { data: credentials = [] } = useQuery<PlatformCredential[]>({
     queryKey: ['platform_credentials'],
     queryFn: () =>
-      blink.db.table<PlatformCredential>('platform_credentials').list({ orderBy: { connectedAt: 'desc' } }),
+      localDB.table<PlatformCredential>('platform_credentials').list({ orderBy: { connectedAt: 'desc' } }),
   });
 
   const { data: logs = [], isLoading: loadingLogs } = useQuery<DistributionLog[]>({
     queryKey: ['distribution_logs'],
     queryFn: () =>
-      blink.db.table<DistributionLog>('distribution_logs').list({
+      localDB.table<DistributionLog>('distribution_logs').list({
         orderBy: { createdAt: 'desc' },
         limit: 50,
       }),
@@ -662,11 +662,11 @@ export function DistributionEngine({
     try {
       const existing = credMap[platformId];
       if (existing) {
-        await blink.db.table<PlatformCredential>('platform_credentials').update(existing.id, {
+        await localDB.table<PlatformCredential>('platform_credentials').update(existing.id, {
           credentials: JSON.stringify({ apiKey: key }),
         });
       } else {
-        await blink.db.table<PlatformCredential>('platform_credentials').create({
+        await localDB.table<PlatformCredential>('platform_credentials').create({
           userId: '',
           platformName: platformId,
           credentials: JSON.stringify({ apiKey: key }),
@@ -691,7 +691,7 @@ export function DistributionEngine({
     error?: string,
   ) => {
     try {
-      await blink.db.table<DistributionLog>('distribution_logs').create({
+      await localDB.table<DistributionLog>('distribution_logs').create({
         userId: '',
         contentId,
         platform,
@@ -723,7 +723,7 @@ export function DistributionEngine({
       if (platform.tier === 'api') {
         // Call edge function
         try {
-          const token = await blink.auth.getValidToken();
+          const token = 'mock-token';
           const cred = credMap[id];
           const res = await fetch(DIST_URL, {
             method: 'POST',

@@ -5,7 +5,7 @@ import {
   Layout, ShoppingBag, BookOpen, HelpCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import toast from 'react-hot-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -121,7 +121,7 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   // ── Query: list content_lab ──
   const { data: contentList = [], isLoading: loadingList } = useQuery<ContentLabRow[]>({
     queryKey: ['content_lab'],
-    queryFn: () => blink.db.table<ContentLabRow>('content_lab').list({ orderBy: { createdAt: 'desc' } }),
+    queryFn: () => localDB.table<ContentLabRow>('content_lab').list({ orderBy: { createdAt: 'desc' } }),
   });
 
   // ── Mutation: generate content ──
@@ -215,9 +215,9 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
         updatedAt: new Date().toISOString(),
       };
       if (editId) {
-        return blink.db.table<ContentLabRow>('content_lab').update(editId, payload);
+        return localDB.table<ContentLabRow>('content_lab').update(editId, payload);
       }
-      return blink.db.table<ContentLabRow>('content_lab').create({
+      return localDB.table<ContentLabRow>('content_lab').create({
         ...payload,
         userId: '',
         createdAt: new Date().toISOString(),
@@ -234,7 +234,7 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   // ── Mutation: delete ──
   const deleteMutation = useMutation<string, Error, string>({
     mutationFn: async (id) => {
-      await blink.db.table<ContentLabRow>('content_lab').delete(id);
+      await localDB.table<ContentLabRow>('content_lab').delete(id);
       return id;
     },
     onSuccess: () => {

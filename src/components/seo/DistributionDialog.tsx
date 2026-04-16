@@ -4,7 +4,7 @@ import {
   Key, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import toast from 'react-hot-toast';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -83,7 +83,7 @@ export function DistributionDialog({ open, onOpenChange, contentId, onPublished 
 
   const { data: credentials = [] } = useQuery<PlatformCredential[]>({
     queryKey: ['platform_credentials'],
-    queryFn: () => blink.db.table<PlatformCredential>('platform_credentials').list({ orderBy: { connectedAt: 'desc' } }),
+    queryFn: () => localDB.table<PlatformCredential>('platform_credentials').list({ orderBy: { connectedAt: 'desc' } }),
     enabled: open,
   });
 
@@ -99,11 +99,11 @@ export function DistributionDialog({ open, onOpenChange, contentId, onPublished 
     try {
       const existing = credMap[platformName];
       if (existing) {
-        await blink.db.table<PlatformCredential>('platform_credentials').update(existing.id, {
+        await localDB.table<PlatformCredential>('platform_credentials').update(existing.id, {
           credentials: JSON.stringify({ apiKey: key }),
         });
       } else {
-        await blink.db.table<PlatformCredential>('platform_credentials').create({
+        await localDB.table<PlatformCredential>('platform_credentials').create({
           userId: '',
           platformName,
           credentials: JSON.stringify({ apiKey: key }),
@@ -128,7 +128,7 @@ export function DistributionDialog({ open, onOpenChange, contentId, onPublished 
     setPublishing(true);
     setResults(null);
     try {
-      const token = await blink.auth.getValidToken();
+      const token = 'mock-token';
       const platformsPayload = activePlatforms.map(p => ({
         name: p.name,
         config: configs[p.name] || {},
@@ -149,12 +149,12 @@ export function DistributionDialog({ open, onOpenChange, contentId, onPublished 
         .filter(r => r.success).map(r => r.platform);
 
       if (publishedNames.length > 0) {
-        const existing = await blink.db.table<ContentLabRow>('content_lab').get(contentId);
+        const existing = await localDB.table<ContentLabRow>('content_lab').get(contentId);
         if (existing) {
           const prev = existing.platformsPublished ? JSON.parse(existing.platformsPublished) : {};
           const merged: Record<string, boolean> = { ...prev };
           publishedNames.forEach(n => { merged[n] = true; });
-          await blink.db.table<ContentLabRow>('content_lab').update(contentId, {
+          await localDB.table<ContentLabRow>('content_lab').update(contentId, {
             status: 'published',
             platformsPublished: JSON.stringify(merged),
             updatedAt: new Date().toISOString(),

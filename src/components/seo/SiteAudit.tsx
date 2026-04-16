@@ -6,7 +6,7 @@ import {
   Link2, Image, Code2, FileText, TrendingUp, BarChart3,
   ChevronDown, ChevronUp, Shield, Gauge, Layers
 } from 'lucide-react';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -119,7 +119,7 @@ export const SiteAudit = () => {
   const { data: history = [], refetch: refetchHistory } = useQuery<AuditRecord[]>({
     queryKey: ['audits-history'],
     queryFn: async () => {
-      return await blink.db.table<AuditRecord>('audits').list({
+      return await localDB.table<AuditRecord>('audits').list({
         orderBy: { createdAt: 'desc' },
         limit: 10,
       });
@@ -227,7 +227,7 @@ export const SiteAudit = () => {
       // Save to DB (with 4 second timeout fallback to prevent hanging)
       try {
         await Promise.race([
-          blink.db.table('audits').create({
+          localDB.table('audits').create({
             url: targetUrl,
             score: auditResult.score,
             issues: JSON.stringify(auditResult.issues),

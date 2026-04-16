@@ -4,7 +4,7 @@ import {
   Link2, Loader2, Search, ExternalLink, CheckCircle2, XCircle,
   Copy, TrendingUp, Shield, Target, Mail, Globe, BarChart2, Zap
 } from 'lucide-react';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -134,7 +134,7 @@ export const BacklinksManager = () => {
   const { data: backlinks = [], refetch: refetchBacklinks } = useQuery<BacklinkRecord[]>({
     queryKey: ['backlinks'],
     queryFn: async () => {
-      return await blink.db.table<BacklinkRecord>('backlinks').list({
+      return await localDB.table<BacklinkRecord>('backlinks').list({
         orderBy: { foundAt: 'desc' },
       });
     },
@@ -143,7 +143,7 @@ export const BacklinksManager = () => {
   const { data: opportunityRows = [], refetch: refetchOpportunities } = useQuery<OpportunityRecord[]>({
     queryKey: ['backlink-opportunities'],
     queryFn: async () => {
-      return await blink.db.table<OpportunityRecord>('backlink_opportunities').list({
+      return await localDB.table<OpportunityRecord>('backlink_opportunities').list({
         orderBy: { createdAt: 'desc' },
         limit: 20,
       });
@@ -193,9 +193,9 @@ export const BacklinksManager = () => {
 
     try {
       // Ensure site exists in sites table
-      const existingSites = await blink.db.table<SiteRecord>('sites').list({ where: { url }, limit: 1 });
+      const existingSites = await localDB.table<SiteRecord>('sites').list({ where: { url }, limit: 1 });
       if (!existingSites.length) {
-        await blink.db.table<SiteRecord>('sites').create({ userId: '', url, isPrimary: 0, lastAuditAt: null });
+        await localDB.table<SiteRecord>('sites').create({ userId: '', url, isPrimary: 0, lastAuditAt: null });
       }
 
       // Generate backlinks and opportunities via Gemini directly
@@ -211,7 +211,7 @@ export const BacklinksManager = () => {
       // Save backlinks to DB
       await Promise.all(
         (data.backlinks || []).map(bl =>
-          blink.db.table<BacklinkRecord>('backlinks').create({
+          localDB.table<BacklinkRecord>('backlinks').create({
             userId: '',
             siteUrl: url,
             sourceUrl: bl.sourceUrl,
@@ -225,7 +225,7 @@ export const BacklinksManager = () => {
 
       // Save opportunities
       if (data.opportunities?.length) {
-        await blink.db.table<OpportunityRecord>('backlink_opportunities').create({
+        await localDB.table<OpportunityRecord>('backlink_opportunities').create({
           userId: '',
           siteUrl: url,
           opportunityData: JSON.stringify(data.opportunities),

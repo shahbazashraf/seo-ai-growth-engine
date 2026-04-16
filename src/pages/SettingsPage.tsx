@@ -5,7 +5,7 @@ import {
   Plus, Trash2, Star, Eye, EyeOff, Save, TestTube2,
   BarChart2, FileText, Plug, Calendar
 } from 'lucide-react';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -227,7 +227,7 @@ export const SettingsPage = () => {
   const { data: credentials = [] } = useQuery<PlatformCredential[]>({
     queryKey: ['platform-credentials'],
     queryFn: () =>
-      blink.db.table<PlatformCredential>('platform_credentials').list({
+      localDB.table<PlatformCredential>('platform_credentials').list({
         orderBy: { connectedAt: 'desc' },
       }),
   });
@@ -246,12 +246,12 @@ export const SettingsPage = () => {
       const existing = credMap[platformName];
       const creds = JSON.stringify({ apiKey: apiKey.trim() });
       if (existing) {
-        await blink.db.table<PlatformCredential>('platform_credentials').update(existing.id, {
+        await localDB.table<PlatformCredential>('platform_credentials').update(existing.id, {
           credentials: creds,
           connectedAt: new Date().toISOString(),
         });
       } else {
-        await blink.db.table<PlatformCredential>('platform_credentials').create({
+        await localDB.table<PlatformCredential>('platform_credentials').create({
           userId: '',
           platformName,
           credentials: creds,
@@ -304,7 +304,7 @@ export const SettingsPage = () => {
   const { data: sites = [], refetch: refetchSites } = useQuery<SiteRecord[]>({
     queryKey: ['settings-sites'],
     queryFn: () =>
-      blink.db.table<SiteRecord>('sites').list({
+      localDB.table<SiteRecord>('sites').list({
         orderBy: { createdAt: 'desc' },
       }),
   });
@@ -322,7 +322,7 @@ export const SettingsPage = () => {
     try {
       const existing = sites.find(s => s.url === url);
       if (existing) { toast.error('This site is already added'); return; }
-      await blink.db.table<SiteRecord>('sites').create({
+      await localDB.table<SiteRecord>('sites').create({
         userId: '',
         url,
         isPrimary: sites.length === 0 ? 1 : 0,
@@ -344,10 +344,10 @@ export const SettingsPage = () => {
       // Reset all
       await Promise.all(
         sites.map(s =>
-          blink.db.table<SiteRecord>('sites').update(s.id, { isPrimary: 0 })
+          localDB.table<SiteRecord>('sites').update(s.id, { isPrimary: 0 })
         )
       );
-      await blink.db.table<SiteRecord>('sites').update(id, { isPrimary: 1 });
+      await localDB.table<SiteRecord>('sites').update(id, { isPrimary: 1 });
       await refetchSites();
       toast.success('Primary site updated');
     } catch (err: any) {
@@ -360,7 +360,7 @@ export const SettingsPage = () => {
   const removeSite = async (id: string) => {
     setRemovingSite(id);
     try {
-      await blink.db.table<SiteRecord>('sites').delete(id);
+      await localDB.table<SiteRecord>('sites').delete(id);
       await refetchSites();
       toast.success('Site removed');
     } catch (err: any) {
@@ -375,7 +375,7 @@ export const SettingsPage = () => {
   const { data: automationSettings } = useQuery<AutomationSetting | null>({
     queryKey: ['automation-settings'],
     queryFn: async () => {
-      const rows = await blink.db.table<AutomationSetting>('automation_settings').list({
+      const rows = await localDB.table<AutomationSetting>('automation_settings').list({
         orderBy: { createdAt: 'asc' },
         limit: 1,
       });
@@ -408,12 +408,12 @@ export const SettingsPage = () => {
         updatedAt: new Date().toISOString(),
       };
       if (automationSettings?.id) {
-        await blink.db.table<AutomationSetting>('automation_settings').update(
+        await localDB.table<AutomationSetting>('automation_settings').update(
           automationSettings.id,
           payload
         );
       } else {
-        await blink.db.table<AutomationSetting>('automation_settings').create({
+        await localDB.table<AutomationSetting>('automation_settings').create({
           ...payload,
           userId: '',
           lastRun: null,
@@ -438,7 +438,7 @@ export const SettingsPage = () => {
   const { data: allAudits = [] } = useQuery<AuditRecord[]>({
     queryKey: ['audits-this-month'],
     queryFn: () =>
-      blink.db.table<AuditRecord>('audits').list({
+      localDB.table<AuditRecord>('audits').list({
         orderBy: { createdAt: 'desc' },
       }),
   });
@@ -446,7 +446,7 @@ export const SettingsPage = () => {
   const { data: allContent = [] } = useQuery<GeneratedContentRecord[]>({
     queryKey: ['content-this-month'],
     queryFn: () =>
-      blink.db.table<GeneratedContentRecord>('generated_content').list({
+      localDB.table<GeneratedContentRecord>('generated_content').list({
         orderBy: { createdAt: 'desc' },
       }),
   });

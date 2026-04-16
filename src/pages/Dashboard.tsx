@@ -43,7 +43,6 @@ const NAV: NavItem[] = [
   { view: 'audit',          icon: <Globe size={18} />,           label: 'Site Audit' },
   { view: 'competitor',     icon: <Target size={18} />,          label: 'Competitor SERP' },
   { view: 'internal_links', icon: <Network size={18} />,         label: 'Internal Links' },
-  { view: 'programmatic',   icon: <Database size={18} />,        label: 'Programmatic' },
   { view: 'content',        icon: <FileText size={18} />,        label: 'Content Lab' },
   { view: 'distribution',   icon: <Send size={18} />,            label: 'Distribution' },
   { view: 'automation',     icon: <Zap size={18} />,             label: 'Automation' },

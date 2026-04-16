@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import toast from 'react-hot-toast';
 
 // Types based on database schema
@@ -83,7 +83,7 @@ export function useProjects() {
   return useQuery<Project[]>({
     queryKey: queryKeys.projects,
     queryFn: async () => {
-      const result = await blink.db.table<Project>('projects').list({
+      const result = await localDB.table<Project>('projects').list({
         orderBy: { createdAt: 'desc' },
       });
       return result;
@@ -95,7 +95,7 @@ export function useProject(id: string) {
   return useQuery<Project | null>({
     queryKey: queryKeys.project(id),
     queryFn: async () => {
-      const result = await blink.db.table<Project>('projects').get(id);
+      const result = await localDB.table<Project>('projects').get(id);
       return result ?? null;
     },
     enabled: !!id,
@@ -114,7 +114,8 @@ export function useCreateProject() {
 
   return useMutation<Project, Error, CreateProjectInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Project>('projects').create({
+      const result = await localDB.table<Project>('projects').create({
+        userId: '',
         url: input.url,
         name: input.name,
         targetAudience: input.targetAudience || null,
@@ -142,7 +143,7 @@ export function useUpdateProject() {
 
   return useMutation<Project, Error, UpdateProjectInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Project>('projects').update(input.id, {
+      const result = await localDB.table<Project>('projects').update(input.id, {
         url: input.url,
         name: input.name,
         targetAudience: input.targetAudience,
@@ -163,7 +164,7 @@ export function useDeleteProject() {
 
   return useMutation<string, Error, string>({
     mutationFn: async (id) => {
-      await blink.db.table<Project>('projects').delete(id);
+      await localDB.table<Project>('projects').delete(id);
       toast.success('Project deleted successfully!');
       return id;
     },
@@ -179,7 +180,7 @@ export function useKeywords(projectId: string) {
   return useQuery<Keyword[]>({
     queryKey: queryKeys.keywords(projectId),
     queryFn: async () => {
-      const result = await blink.db.table<Keyword>('keywords').list({
+      const result = await localDB.table<Keyword>('keywords').list({
         where: { projectId },
         orderBy: { createdAt: 'desc' },
       });
@@ -193,7 +194,7 @@ export function useKeyword(id: string) {
   return useQuery<Keyword | null>({
     queryKey: queryKeys.keyword(id),
     queryFn: async () => {
-      const result = await blink.db.table<Keyword>('keywords').get(id);
+      const result = await localDB.table<Keyword>('keywords').get(id);
       return result ?? null;
     },
     enabled: !!id,
@@ -212,7 +213,7 @@ export function useCreateKeyword() {
 
   return useMutation<Keyword, Error, CreateKeywordInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Keyword>('keywords').create({
+      const result = await localDB.table<Keyword>('keywords').create({
         projectId: input.projectId,
         keyword: input.keyword,
         volume: input.volume || null,
@@ -240,7 +241,7 @@ export function useUpdateKeyword() {
 
   return useMutation<Keyword, Error, UpdateKeywordInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Keyword>('keywords').update(input.id, {
+      const result = await localDB.table<Keyword>('keywords').update(input.id, {
         keyword: input.keyword,
         volume: input.volume,
         difficulty: input.difficulty,
@@ -260,7 +261,7 @@ export function useDeleteKeyword() {
 
   return useMutation<{ id: string; projectId: string }, Error, { id: string; projectId: string }>({
     mutationFn: async (variables) => {
-      await blink.db.table<Keyword>('keywords').delete(variables.id);
+      await localDB.table<Keyword>('keywords').delete(variables.id);
       toast.success('Keyword deleted successfully!');
       return variables;
     },
@@ -276,7 +277,7 @@ export function useArticles(projectId: string) {
   return useQuery<Article[]>({
     queryKey: queryKeys.articles(projectId),
     queryFn: async () => {
-      const result = await blink.db.table<Article>('articles').list({
+      const result = await localDB.table<Article>('articles').list({
         where: { projectId },
         orderBy: { createdAt: 'desc' },
       });
@@ -290,7 +291,7 @@ export function useArticle(id: string) {
   return useQuery<Article | null>({
     queryKey: queryKeys.article(id),
     queryFn: async () => {
-      const result = await blink.db.table<Article>('articles').get(id);
+      const result = await localDB.table<Article>('articles').get(id);
       return result ?? null;
     },
     enabled: !!id,
@@ -312,7 +313,7 @@ export function useCreateArticle() {
 
   return useMutation<Article, Error, CreateArticleInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Article>('articles').create({
+      const result = await localDB.table<Article>('articles').create({
         projectId: input.projectId,
         keywordId: input.keywordId || null,
         title: input.title || null,
@@ -346,7 +347,7 @@ export function useUpdateArticle() {
 
   return useMutation<Article, Error, UpdateArticleInput>({
     mutationFn: async (input) => {
-      const result = await blink.db.table<Article>('articles').update(input.id, {
+      const result = await localDB.table<Article>('articles').update(input.id, {
         keywordId: input.keywordId,
         title: input.title,
         outline: input.outline,
@@ -369,7 +370,7 @@ export function useDeleteArticle() {
 
   return useMutation<{ id: string; projectId: string }, Error, { id: string; projectId: string }>({
     mutationFn: async (variables) => {
-      await blink.db.table<Article>('articles').delete(variables.id);
+      await localDB.table<Article>('articles').delete(variables.id);
       toast.success('Article deleted successfully!');
       return variables;
     },
@@ -385,7 +386,7 @@ export function useAudits(limit = 20) {
   return useQuery<Audit[]>({
     queryKey: ['audits', limit],
     queryFn: async () => {
-      return await blink.db.table<Audit>('audits').list({
+      return await localDB.table<Audit>('audits').list({
         orderBy: { createdAt: 'desc' },
         limit,
       });
@@ -399,7 +400,7 @@ export function useGeneratedContent(limit = 20) {
   return useQuery<GeneratedContent[]>({
     queryKey: ['generated-content', limit],
     queryFn: async () => {
-      return await blink.db.table<GeneratedContent>('generated_content').list({
+      return await localDB.table<GeneratedContent>('generated_content').list({
         orderBy: { createdAt: 'desc' },
         limit,
       });
@@ -413,7 +414,7 @@ export function useAutomationSettings() {
   return useQuery<AutomationSetting | null>({
     queryKey: ['automation-settings'],
     queryFn: async () => {
-      const rows = await blink.db.table<AutomationSetting>('automation_settings').list({
+      const rows = await localDB.table<AutomationSetting>('automation_settings').list({
         orderBy: { createdAt: 'asc' },
         limit: 1,
       });

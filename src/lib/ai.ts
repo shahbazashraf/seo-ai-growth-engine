@@ -4,11 +4,11 @@
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 function getOpenRouterKey(): string {
-  return localStorage.getItem('OPENROUTER_API_KEY') || '';
+  return (localStorage.getItem('OPENROUTER_API_KEY') || '').trim();
 }
 
 function getGeminiKey(): string {
-  return localStorage.getItem('GEMINI_API_KEY') || '';
+  return (localStorage.getItem('GEMINI_API_KEY') || '').trim();
 }
 
 /** Save API keys to localStorage (called from Settings page) */
@@ -40,32 +40,71 @@ interface OpenRouterResponse {
   error?: { message?: string };
 }
 
-async function fetchOpenRouter(prompt: string): Promise<string> {
+async function fetchOpenRouter(prompt: string, maxRetries = 2): Promise<string> {
   const key = getOpenRouterKey();
   if (!key) throw new Error('OpenRouter API key not set. Go to Settings → AI Keys to add it.');
 
-  const res = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: 'deepseek/deepseek-chat',
-      messages: [{ role: 'user', content: prompt }],
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
+  let lastError = '';
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error((errData as OpenRouterResponse).error?.message || `OpenRouter API error: HTTP ${res.status}`);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delay = Math.pow(2, attempt) * 1000;
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    try {
+      const res = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          'HTTP-Referer': window.location.origin, // Required by OpenRouter
+          'X-Title': 'SEO AI Engine', // Required by OpenRouter
+        },
+        body: JSON.stringify({
+          // OpenRouter supports multiple models in array for automatic fallback
+          // If DeepSeek is overloaded or rate limited, it automatically falls back!
+          models: ['deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'anthropic/claude-3-haiku'],
+          messages: [{ role: 'user', content: prompt }],
+        }),
+        signal: AbortSignal.timeout(120000), // Increased from 15s to 120s
+      });
+
+      if (res.status === 429 && attempt < maxRetries) {
+        console.log(`OpenRouter rate limited, retrying in ${Math.pow(2, attempt + 1)}s...`);
+        continue;
+      }
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        try {
+          const errData = JSON.parse(errText);
+          lastError = (errData as OpenRouterResponse).error?.message || `OpenRouter API error: HTTP ${res.status}`;
+        } catch {
+          lastError = `OpenRouter API error: HTTP ${res.status} - ${errText || 'No detail'}`;
+        }
+        // Retry on server errors or rate limits
+        if (attempt < maxRetries && (res.status >= 500 || res.status === 429 || res.status === 528 || res.status === 502)) {
+          continue; 
+        }
+        throw new Error(lastError);
+      }
+
+      const data: OpenRouterResponse = await res.json();
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) throw new Error('OpenRouter returned empty response');
+      return text;
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        lastError = 'OpenRouter request timed out after 120s';
+      } else {
+        lastError = err.message || 'Unknown network error';
+      }
+      if (attempt === maxRetries) throw new Error(lastError);
+    }
   }
-
-  const data: OpenRouterResponse = await res.json();
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error('OpenRouter returned empty response');
-  return text;
+  
+  throw new Error(lastError || 'OpenRouter API failed after retries');
 }
 
 async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
@@ -78,37 +117,50 @@ async function fetchGemini(prompt: string, maxRetries = 3): Promise<string> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
       const delay = Math.pow(2, attempt) * 1000;
+      console.log(`Gemini retry ${attempt}, waiting ${delay}ms...`);
       await new Promise(r => setTimeout(r, delay));
     }
 
-    const res = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+    try {
+      const res = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+        }),
+        signal: AbortSignal.timeout(120000), // Increased from 15s to 120s
+      });
 
-    if (res.status === 429 && attempt < maxRetries) {
-      console.log(`Gemini rate limited, retrying in ${Math.pow(2, attempt + 1)}s...`);
-      continue;
-    }
-
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      lastError = (errData as GeminiResponse).error?.message || `Gemini API error: HTTP ${res.status}`;
-      if (res.status === 429 && attempt === maxRetries) {
-        throw new Error('Gemini API rate limited entirely.');
+      if (res.status === 429 && attempt < maxRetries) {
+        console.log(`Gemini rate limited (429), retrying in ${Math.pow(2, attempt + 1)}s...`);
+        continue;
       }
-      throw new Error(lastError);
-    }
 
-    const data: GeminiResponse = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Gemini returned empty response');
-    return text;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        lastError = (errData as GeminiResponse).error?.message || `Gemini API error: HTTP ${res.status}`;
+        if (res.status === 429 && attempt === maxRetries) {
+          throw new Error('Gemini API rate limited entirely.');
+        }
+        if (attempt < maxRetries && res.status >= 500) {
+           continue; 
+        }
+        throw new Error(lastError);
+      }
+
+      const data: GeminiResponse = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error('Gemini returned empty response');
+      return text;
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+        lastError = 'Gemini request timed out after 120s';
+      } else {
+        lastError = err.message || 'Unknown network error';
+      }
+      if (attempt === maxRetries) throw new Error(lastError);
+    }
   }
 
   throw new Error(lastError || 'Gemini API failed after retries');

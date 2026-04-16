@@ -5,7 +5,7 @@ import {
   Download, ToggleLeft, ToggleRight, Calendar,
   FileText, Hash, ChevronDown, ChevronUp, RefreshCcw, Shield
 } from 'lucide-react';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -96,7 +96,7 @@ export const AutomationEngine = () => {
   const { data: settings, isLoading: settingsLoading } = useQuery<AutomationSetting | null>({
     queryKey: ['automation-settings'],
     queryFn: async () => {
-      const rows = await blink.db.table<AutomationSetting>('automation_settings').list({ limit: 1 });
+      const rows = await localDB.table<AutomationSetting>('automation_settings').list({ limit: 1 });
       return rows[0] ?? null;
     },
   });
@@ -105,7 +105,7 @@ export const AutomationEngine = () => {
   const { data: history = [], refetch: refetchHistory } = useQuery<ContentRecord[]>({
     queryKey: ['generated-content'],
     queryFn: async () => {
-      return await blink.db.table<ContentRecord>('generated_content').list({
+      return await localDB.table<ContentRecord>('generated_content').list({
         orderBy: { createdAt: 'desc' },
         limit: 10,
       });
@@ -116,9 +116,9 @@ export const AutomationEngine = () => {
   const saveSettings = useMutation({
     mutationFn: async (patch: Partial<AutomationSetting>) => {
       if (settings?.id) {
-        return blink.db.table('automation_settings').update(settings.id, patch);
+        return localDB.table('automation_settings').update(settings.id, patch);
       }
-      return blink.db.table('automation_settings').create({
+      return localDB.table('automation_settings').create({
         enabled: '0',
         frequency: 'weekly',
         lastRun: null,
@@ -189,7 +189,7 @@ export const AutomationEngine = () => {
 
       // Save to DB
       try {
-        await blink.db.table('generated_content').create({
+        await localDB.table('generated_content').create({
           siteUrl: targetUrl,
           title: data.title,
           content: data.content,
@@ -199,7 +199,7 @@ export const AutomationEngine = () => {
           createdAt: new Date().toISOString(),
         });
 
-        await blink.db.table('content_lab').create({
+        await localDB.table('content_lab').create({
           title: data.title,
           content: data.content,
           metaDescription: data.metaDescription,

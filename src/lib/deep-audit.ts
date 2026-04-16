@@ -380,27 +380,29 @@ export async function runDeepAudit(targetUrl: string): Promise<DeepAuditResult> 
 
   // Fetch the page
   const fetchStart = Date.now();
-  try {
-    const res = await fetch(targetUrl, {
-      signal: AbortSignal.timeout(8000),
-      redirect: 'follow',
-    });
-    html = await res.text();
-    html = html.substring(0, 300000); // Hard cap at 300KB to prevent browser regex crashes
-    fetchOk = res.ok;
-  } catch {
+  
+  // CORS Proxy Waterfall
+  const fetchStrategies = [
+    () => fetch(targetUrl, { signal: AbortSignal.timeout(5000), redirect: 'follow' }),
+    () => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(8000) }),
+    () => fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`, { signal: AbortSignal.timeout(8000) }),
+  ];
+
+  for (const strategy of fetchStrategies) {
     try {
-      const proxyRes = await fetch(
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      html = await proxyRes.text();
-      html = html.substring(0, 300000); // Hard cap at 300KB
-      fetchOk = proxyRes.ok;
-    } catch {
-      fetchOk = false;
+      const res = await strategy();
+      if (res.ok) {
+        html = await res.text();
+        html = html.substring(0, 300000); // Hard cap at 300KB
+        fetchOk = true;
+        break;
+      }
+    } catch (e) {
+      // Continue to next strategy
+      console.warn('Fetch strategy failed, trying next...');
     }
   }
+
   responseTime = Date.now() - fetchStart;
 
   // Extract all data

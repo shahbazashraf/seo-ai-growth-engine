@@ -4,7 +4,7 @@ import {
   Globe, FileText, Zap, Activity, ArrowRight,
   Link2, Send, Plug, TrendingUp, Calendar, Shield, Gauge, Layers,
 } from 'lucide-react';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,25 +28,25 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
   /* ── Row 1 stats ── */
   const { data: auditCount,  isLoading: l1 } = useQuery<number>({ queryKey: ['audit-count'],
     queryFn: async () => {
-      return await blink.db.table('audits').count();
+      return await localDB.table('audits').count();
     } });
 
   const { data: avgScore,    isLoading: l2 } = useQuery<number | null>({ queryKey: ['avg-score'],
     queryFn: async () => {
-      const rows = await blink.db.table<{ score: number }>('audits').list({ select: ['score'] });
+      const rows = await localDB.table<{ score: number }>('audits').list({ select: ['score'] });
       if (!rows.length) return null;
       return Math.round(rows.reduce((a, r) => a + Number(r.score), 0) / rows.length);
     } });
 
   const { data: contentCount, isLoading: l3 } = useQuery<number>({ queryKey: ['content-count'],
     queryFn: async () => {
-      return await blink.db.table('generated_content').count();
+      return await localDB.table('generated_content').count();
     } });
 
   const { data: automationSettings } = useQuery<{ enabled: string | number; frequency: string } | null>({
     queryKey: ['automation-settings'],
     queryFn: async () => {
-      const rows = await blink.db.table<{ enabled: string | number; frequency: string }>('automation_settings').list({ limit: 1 });
+      const rows = await localDB.table<{ enabled: string | number; frequency: string }>('automation_settings').list({ limit: 1 });
       return rows[0] ?? null;
     } });
 
@@ -54,30 +54,30 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
   const { data: backlinksCount, isLoading: l5 } = useQuery<number>({
     queryKey: ['backlink-count'],
     queryFn: async () => {
-      return await blink.db.table('backlinks').count();
+      return await localDB.table('backlinks').count();
     },
   });
 
   const { data: publishedCount, isLoading: l6 } = useQuery<number>({
     queryKey: ['published-count'],
     queryFn: async () => {
-      return await blink.db.table('content_lab').count({ where: { status: 'published' } });
+      return await localDB.table('content_lab').count({ where: { status: 'published' } });
     },
   });
 
   const { data: platformsCount, isLoading: l7 } = useQuery<number>({
     queryKey: ['platforms-connected-count'],
     queryFn: async () => {
-      return await blink.db.table('platform_credentials').count();
+      return await localDB.table('platform_credentials').count();
     },
   });
 
   const { data: distRate, isLoading: l8 } = useQuery<string>({
     queryKey: ['distribution-rate'],
     queryFn: async () => {
-      const total = await blink.db.table('distribution_logs').count();
+      const total = await localDB.table('distribution_logs').count();
       if (total === 0) return '—';
-      const success = await blink.db.table('distribution_logs').count({ where: { status: 'success' } });
+      const success = await localDB.table('distribution_logs').count({ where: { status: 'success' } });
       return `${Math.round((success / total) * 100)}%`;
     },
   });
@@ -87,13 +87,13 @@ export const OverviewDashboard = ({ onNavigate }: OverviewProps) => {
     queryKey: ['recent-activity-v2'],
     queryFn: async () => {
       const [audits, content, distLogs] = await Promise.all([
-        blink.db.table<{ id: string; url: string; score: number; createdAt: string }>('audits').list({
+        localDB.table<{ id: string; url: string; score: number; createdAt: string }>('audits').list({
           orderBy: { createdAt: 'desc' }, limit: 5,
         }),
-        blink.db.table<{ id: string; title: string; wordCount: number; createdAt: string }>('generated_content').list({
+        localDB.table<{ id: string; title: string; wordCount: number; createdAt: string }>('generated_content').list({
           orderBy: { createdAt: 'desc' }, limit: 5,
         }),
-        blink.db.table<{ id: string; platform: string; status: string; createdAt: string }>('distribution_logs').list({
+        localDB.table<{ id: string; platform: string; status: string; createdAt: string }>('distribution_logs').list({
           orderBy: { createdAt: 'desc' }, limit: 5,
         }),
       ]);

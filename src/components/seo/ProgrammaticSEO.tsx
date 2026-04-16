@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import toast from 'react-hot-toast';
 import { geminiGenerateJSON } from '@/lib/ai';
 import { createLogger, addBreadcrumb } from '@/lib/logger';
-import { blink } from '@/blink/client';
+import { localDB } from '@/lib/local-db';
 
 const log = createLogger('ProgrammaticSEO');
 
@@ -76,7 +76,7 @@ export function ProgrammaticSEO() {
         const data = await geminiGenerateJSON<BulkResult>(aiPrompt);
         
         // Save to DB
-        await blink.db.table('content_lab').create({
+        await localDB.table('content_lab').create({
           userId: '',
           title: data.title,
           content: data.content,
