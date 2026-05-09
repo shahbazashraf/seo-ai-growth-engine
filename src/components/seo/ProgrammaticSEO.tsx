@@ -77,7 +77,6 @@ export function ProgrammaticSEO() {
         
         // Save to DB
         await localDB.table('content_lab').create({
-          userId: '',
           title: data.title,
           content: data.content,
           metaDescription: data.metaDescription,
@@ -86,6 +85,8 @@ export function ProgrammaticSEO() {
           status: 'draft',
           platformsPublished: '[]',
           wordCount: data.wordCount || data.content.split(' ').length,
+          canonicalUrl: null,
+          publishSource: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
@@ -190,7 +191,7 @@ export function ProgrammaticSEO() {
             <div className="text-xs text-muted-foreground space-y-1">
               <strong className="text-amber-700 dark:text-amber-500 block">Performance Notice</strong>
               <p>Bulk generation consumes significant AI quota. Processing is artificially delayed between entries to prevent rate limits.</p>
-              <p>Generated content is saved directly to your <strong>Content Lab</strong> as drafts.</p>
+              <p>Generated content is saved directly to your <strong>Content Lab</strong> as drafts and should be treated as <strong>AI-suggested</strong> until reviewed.</p>
             </div>
           </div>
         </div>

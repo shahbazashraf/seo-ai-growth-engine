@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Globe, FileText, LayoutDashboard, Settings,
-  Link2, Zap, Send, Target, Network, Database,
+  Link2, Zap, Send, Target, Network, Database, TrendingUp,
   LogOut, Menu, X, ChevronRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { DistributionEngine } from '@/components/seo/DistributionEngine';
 import { CompetitorAnalysis } from '@/components/seo/CompetitorAnalysis';
 import { InternalLinkGraph } from '@/components/seo/InternalLinkGraph';
 import { ProgrammaticSEO } from '@/components/seo/ProgrammaticSEO';
+import { RankingDashboard } from '@/components/seo/RankingDashboard';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { useProjects } from '@/hooks/useData';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +31,7 @@ type View =
   | 'content'
   | 'backlinks'
   | 'distribution'
+  | 'ranking'
   | 'settings';
 
 interface NavItem {
@@ -45,6 +47,7 @@ const NAV: NavItem[] = [
   { view: 'internal_links', icon: <Network size={18} />,         label: 'Internal Links' },
   { view: 'content',        icon: <FileText size={18} />,        label: 'Content Lab' },
   { view: 'distribution',   icon: <Send size={18} />,            label: 'Distribution' },
+  { view: 'ranking',        icon: <TrendingUp size={18} />,      label: 'Rankings' },
   { view: 'automation',     icon: <Zap size={18} />,             label: 'Automation' },
   { view: 'backlinks',      icon: <Link2 size={18} />,           label: 'Backlinks' },
 ];
@@ -59,6 +62,7 @@ const VIEW_TITLE: Record<View, string> = {
   content:        'Content Lab',
   backlinks:      'Backlinks Manager',
   distribution:   'Distribution Engine',
+  ranking:        'Ranking Dashboard',
   settings:       'Settings',
 };
 
@@ -332,6 +336,8 @@ export const Dashboard = () => {
             initialContentId={distContentId}
           />
         );
+      case 'ranking':
+        return <RankingDashboard onNavigate={(v) => setActive(v as View)} />;
       case 'settings':
         return <SettingsPage />;
       default:

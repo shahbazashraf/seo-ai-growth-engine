@@ -21,14 +21,14 @@ export const LandingPage = () => {
           >
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-medium mb-6">
               <Zap className="h-3 w-3" />
-              <span>Introducing SEO AI Growth Engine v1.0</span>
+              <span>AI-assisted SEO workspace for serious teams</span>
             </div>
             <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Automate Your Organic <br /> 
+              Run Your Organic <br /> 
               <span className="text-primary">Growth with AI</span>
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
-              The only autonomous SEO platform that analyzes your site, researches keywords, generates content, and distributes it across the web.
+              An AI-assisted SEO workspace for audits, research, content, and distribution with guided automation and human review where it matters.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-16">
@@ -58,7 +58,7 @@ export const LandingPage = () => {
       <section className="py-24 bg-secondary/30 border-y">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold mb-4">Autonomous SEO Engine</h2>
+            <h2 className="text-3xl font-bold mb-4">AI-Assisted SEO Workspace</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
               Our AI doesn't just suggest—it executes. From discovery to distribution, your organic growth is on autopilot.
             </p>
@@ -88,7 +88,7 @@ export const LandingPage = () => {
           </div>
           <h2 className="text-4xl font-bold mb-6 relative z-10">Ready to transform your SEO?</h2>
           <p className="text-xl text-primary-foreground/80 mb-10 max-w-xl mx-auto relative z-10">
-            Join thousands of websites scaling their organic traffic with the AI Growth Engine.
+            Build a durable SEO workflow with AI assistance, real data, and room for human review.
           </p>
           <Link to="/auth">
             <Button size="lg" variant="secondary" className="h-14 px-10 text-lg relative z-10">
@@ -118,16 +118,16 @@ const features = [
   {
     icon: <Search className="h-6 w-6 text-primary" />,
     title: "AI Site Audit",
-    description: "Deep crawl of your website to identify SEO gaps, technical issues, and ranking opportunities."
+    description: "Deep crawl of your website to identify SEO gaps, technical issues, and ranking opportunities with transparent scoring."
   },
   {
     icon: <FileText className="h-6 w-6 text-primary" />,
     title: "AI Content Studio",
-    description: "Generate high-authority, SEO-optimized blog posts and articles that actually provide value to readers."
+    description: "Generate SEO-ready drafts, briefs, and content enhancements with structured guidance and review-ready workflows."
   },
   {
     icon: <Share2 className="h-6 w-6 text-primary" />,
-    title: "Autonomous Distribution",
-    description: "One-click syndication to Medium, Dev.to, LinkedIn, and social media with ethical backlink creation."
+    title: "Guided Distribution",
+    description: "Publish through trusted APIs where available and use clear guided flows everywhere else without overstating automation."
   }
 ];

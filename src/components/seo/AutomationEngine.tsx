@@ -19,6 +19,9 @@ import { geminiGenerateJSON, generateAIImageUrl } from '@/lib/ai';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { createLogger, addBreadcrumb } from '@/lib/logger';
 import { createScheduledJob } from '@/lib/scheduler';
+import { buildSeoActionQueue, type SeoAction } from '@/lib/seo-action-engine';
+import { getPlatformStatuses } from '@/lib/platform-tokens';
+import { apiUrl } from '@/lib/api-endpoints';
 
 const log = createLogger('AutomationEngine');
 
@@ -39,6 +42,10 @@ interface ContentRecord {
   keywords: string;
   metaDescription: string;
   wordCount: number;
+  canonicalUrl?: string | null;
+  publishedUrl?: string | null;
+  publishTargetType?: 'cms' | 'syndication' | 'social' | null;
+  verificationStatus?: 'pending' | 'verified' | 'failed' | 'manual-review' | null;
   createdAt: string;
 }
 
@@ -48,6 +55,21 @@ interface AutomationSetting {
   frequency: string;
   lastRun: string | null;
   nextRun: string | null;
+}
+
+interface ActionResult {
+  step: string;
+  status: 'success' | 'failed' | 'skipped';
+  message: string;
+}
+
+interface RunLog {
+  id: string;
+  runAt: string;
+  actions: ActionResult[];
+  totalPlatformsPosted: number;
+  outreachGenerated: number;
+  outreachSent: number;
 }
 
 const PIPELINE_STEPS = [
@@ -78,18 +100,19 @@ export const AutomationEngine = () => {
   const [autoDistribute, setAutoDistribute] = useState(false);
   const [distPlatforms, setDistPlatforms] = useState<Record<string, boolean>>({});
   const [lastDistributed, setLastDistributed] = useState<string | null>(null);
+  const [lastRunLog, setLastRunLog] = useState<RunLog | null>(null);
 
   const DIST_PLATFORMS = [
+    { id: 'wordpress', name: 'WordPress', emoji: '📰' },
+    { id: 'custom_webhook', name: 'Custom Webhook', emoji: '🪝' },
     { id: 'devto', name: 'Dev.to', emoji: '🟣' },
     { id: 'medium', name: 'Medium', emoji: '✍️' },
     { id: 'hashnode', name: 'Hashnode', emoji: '🔷' },
-    { id: 'twitter', name: 'Twitter/X', emoji: '🐦' },
-    { id: 'linkedin', name: 'LinkedIn', emoji: '💼' },
   ];
 
   const handleAutoDistribute = (val: boolean) => {
     setAutoDistribute(val);
-    toast.success(val ? 'Auto-distribute enabled' : 'Auto-distribute disabled');
+    toast.success(val ? 'Own-site-first publishing enabled' : 'Own-site-first publishing disabled');
   };
 
   // ── Load settings ──────────────────────────────────────────────
@@ -110,6 +133,71 @@ export const AutomationEngine = () => {
         limit: 10,
       });
     },
+  });
+
+  const { data: persistedRunLog } = useQuery<RunLog | null>({
+    queryKey: ['automation-last-run-log'],
+    queryFn: async () => {
+      const rows = await localDB.table<RunLog>('runLogs').list({ orderBy: { runAt: 'desc' }, limit: 1 });
+      return rows[0] ?? null;
+    },
+  });
+
+  const { data: nextActions = [] } = useQuery<SeoAction[]>({
+    queryKey: ['automation-next-actions', siteUrl],
+    queryFn: async () => {
+      const [audits, keywords, content, backlinks, rankingRows, indexationRows, outreachRows] = await Promise.all([
+        localDB.table<any>('audits').list({ orderBy: { createdAt: 'desc' }, limit: 10 }),
+        localDB.table<any>('keywords').list({ orderBy: { createdAt: 'desc' }, limit: 20 }),
+        localDB.table<any>('content_lab').list({ orderBy: { updatedAt: 'desc' }, limit: 20 }),
+        localDB.table<any>('backlinks').list({ orderBy: { createdAt: 'desc' }, limit: 20 }),
+        localDB.table<any>('rankingSnapshots').list({ orderBy: { snapshotDate: 'desc' }, limit: 50 }),
+        localDB.table<any>('indexationRecords').list({ orderBy: { lastChecked: 'desc' }, limit: 50 }),
+        localDB.table<any>('outreachRecords').list({ orderBy: { createdAt: 'desc' }, limit: 100 }),
+      ]);
+
+      const latestRankingByContent = new Map<string, any>();
+      rankingRows.forEach((row: any) => {
+        if (!latestRankingByContent.has(row.contentId)) latestRankingByContent.set(row.contentId, row);
+      });
+      const latestIndexationByContent = new Map<string, any>();
+      indexationRows.forEach((row: any) => {
+        if (!latestIndexationByContent.has(row.contentId)) latestIndexationByContent.set(row.contentId, row);
+      });
+
+      return buildSeoActionQueue({
+        projectId: 'workspace-default',
+        projectName: siteUrl || 'your site',
+        siteUrl,
+        audits,
+        keywords,
+        content: content.map((item: any) => ({
+          ...item,
+          publishedAt: item.publishedAt || item.createdAt,
+          authorityScore: Number(item.authorityScore || 60),
+          contentQualityScore: Number(item.contentQualityScore || (Number(item.wordCount || 0) > 1000 ? 70 : 48)),
+          backlinkCount: Number(item.backlinkCount || 0),
+        })),
+        backlinks,
+        ranking: Array.from(latestRankingByContent.values()).map((row: any) => ({
+          contentId: row.contentId,
+          url: row.url,
+          avgPosition: Number(row.avgPosition || 0),
+          decayDetected: Boolean(row.decayDetected),
+        })),
+        indexation: Array.from(latestIndexationByContent.values()).map((row: any) => ({
+          contentId: row.contentId,
+          url: row.url,
+          status: row.status,
+        })),
+        outreach: outreachRows.map((row: any) => ({
+          contentId: row.contentId,
+          status: row.status,
+          sentAt: row.sentAt,
+        })),
+      }).slice(0, 3);
+    },
+    enabled: !!siteUrl.trim(),
   });
 
   // ── Upsert settings ─────────────────────────────────────────────
@@ -166,12 +254,18 @@ export const AutomationEngine = () => {
     }
 
     try {
+      const actionResults: ActionResult[] = [];
+      let totalPlatformsPosted = 0;
+      let outreachGenerated = 0;
+      let outreachSent = 0;
+
       let targetUrl = siteUrl.trim();
       if (!targetUrl.startsWith('http')) targetUrl = 'https://' + targetUrl;
 
       // Call Gemini directly from the browser
+      const highestPriorityAction = nextActions[0];
       const data = await geminiGenerateJSON<GeneratedContent>(
-        `You are an expert SEO content strategist. Based on this website URL: ${targetUrl}\n\nGenerate a high-quality, SEO-optimized blog post that would attract organic traffic to this site.\n\nRequirements:\n- Title: Compelling, SEO-optimized, includes a primary keyword\n- Meta description: 140-155 characters, includes call to action\n- Keywords: 5-7 relevant SEO keywords\n- Content: Full blog post in Markdown, minimum 1000 words, with proper H2/H3 structure, introduction, body sections, and conclusion. Include at least 2 relevant sub-headings.\n- Image Prompt: Provide a highly descriptive AI image prompt for a hero image related to this topic.\n- Word count: Count actual words in the content field.\n\nRespond STRICTLY with a JSON object with these properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), "imagePrompt" (string), and "wordCount" (number).`
+        `You are an expert SEO content strategist. Based on this website URL: ${targetUrl}\n\nPriority SEO action: ${highestPriorityAction?.title || 'Create a new article for the site'}.\nReasoning: ${highestPriorityAction?.reasoning || 'Focus on the highest-leverage own-site SEO action first.'}\n\nGenerate a high-quality, SEO-optimized blog post or refresh draft that would attract organic traffic to this site.\n\nRequirements:\n- Title: Compelling, SEO-optimized, includes a primary keyword\n- Meta description: 140-155 characters, includes call to action\n- Keywords: 5-7 relevant SEO keywords\n- Content: Full blog post in Markdown, minimum 1000 words, with proper H2/H3 structure, introduction, body sections, and conclusion. Include at least 2 relevant sub-headings.\n- Image Prompt: Provide a highly descriptive AI image prompt for a hero image related to this topic.\n- Word count: Count actual words in the content field.\n\nRespond STRICTLY with a JSON object with these properties: "title" (string), "metaDescription" (string), "keywords" (array of strings), "content" (string), "imagePrompt" (string), and "wordCount" (number).`
       );
 
       timers.forEach(clearTimeout);
@@ -188,6 +282,7 @@ export const AutomationEngine = () => {
       setResult(resultData);
 
       // Save to DB
+      let createdContentId = '';
       try {
         await localDB.table('generated_content').create({
           siteUrl: targetUrl,
@@ -199,7 +294,8 @@ export const AutomationEngine = () => {
           createdAt: new Date().toISOString(),
         });
 
-        await localDB.table('content_lab').create({
+        const createdContent = await localDB.table<any>('content_lab').create({
+          originSiteUrl: targetUrl,
           title: data.title,
           content: data.content,
           metaDescription: data.metaDescription,
@@ -208,38 +304,152 @@ export const AutomationEngine = () => {
           status: 'draft',
           platformsPublished: '{}',
           wordCount: actualWordCount,
-          userId: '',
+          canonicalUrl: null,
+          publishedUrl: null,
+          distributionMode: 'canonical',
+          publishTargetType: 'cms',
+          syndicationPolicy: 'canonical-repost',
+          verificationStatus: 'pending',
+          publishSource: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
+        createdContentId = createdContent.id;
+        actionResults.push({ step: 'content-generation', status: 'success', message: 'Generated and stored content draft.' });
       } catch (dbErr) {
         console.error('DB save error:', dbErr);
+        actionResults.push({ step: 'content-generation', status: 'failed', message: 'Failed to store generated content.' });
       }
 
       await refetchHistory();
 
-      // Auto-distribute if enabled
+      // Auto-publish prep if enabled
       if (autoDistribute) {
         const activePlatforms = Object.entries(distPlatforms)
           .filter(([, v]) => v)
           .map(([k]) => k);
         if (activePlatforms.length > 0) {
           setLastDistributed(activePlatforms.join(', '));
-          toast.success(`Auto-distributing to: ${activePlatforms.join(', ')}`);
-          activePlatforms.forEach(p => {
-            if (p === 'twitter') {
-              window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(data.title)}`, '_blank');
-            } else if (p === 'linkedin') {
-              window.open(`https://www.linkedin.com/sharing/share-offsite/?url=https://example.com`, '_blank');
-            }
-          });
+          toast.success(`Prepared for automated publish targets: ${activePlatforms.join(', ')}`);
         }
+      }
+
+      if (createdContentId) {
+        const syndicationPlatforms: Array<'medium' | 'devto' | 'hashnode'> = ['medium', 'devto', 'hashnode'];
+        for (const platform of syndicationPlatforms) {
+          try {
+            const response = await fetch(apiUrl('/api/syndication-poster'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contentId: createdContentId,
+                platform,
+                mode: 'full-canonical',
+              }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (response.ok && payload?.success) {
+              totalPlatformsPosted += 1;
+              actionResults.push({ step: `syndication-${platform}`, status: 'success', message: `Posted to ${platform}.` });
+            } else {
+              actionResults.push({ step: `syndication-${platform}`, status: 'failed', message: payload?.error || `Failed ${platform} syndication.` });
+            }
+          } catch (error) {
+            actionResults.push({ step: `syndication-${platform}`, status: 'failed', message: error instanceof Error ? error.message : 'Syndication error.' });
+          }
+        }
+      }
+
+      try {
+        const statuses = await getPlatformStatuses();
+        const redditConnected = statuses.find((status) => status.platform === 'reddit')?.connected;
+        if (redditConnected && createdContentId) {
+          const redditResponse = await fetch(apiUrl('/api/reddit-poster'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contentId: createdContentId,
+              subreddit: 'SEO',
+              postType: 'link',
+            }),
+          });
+          const redditPayload = await redditResponse.json().catch(() => ({}));
+          if (redditResponse.ok && redditPayload?.success) {
+            totalPlatformsPosted += 1;
+            actionResults.push({ step: 'reddit-post', status: 'success', message: 'Posted to Reddit.' });
+          } else {
+            actionResults.push({ step: 'reddit-post', status: 'failed', message: redditPayload?.error || 'Reddit post failed.' });
+          }
+        } else {
+          actionResults.push({ step: 'reddit-post', status: 'skipped', message: 'Reddit not connected.' });
+        }
+      } catch (error) {
+        actionResults.push({ step: 'reddit-post', status: 'failed', message: error instanceof Error ? error.message : 'Reddit integration failed.' });
+      }
+
+      const highValueExisting = await localDB.table<any>('content_lab').list({ orderBy: { createdAt: 'desc' }, limit: 50 });
+      const outreachCandidate = highValueExisting.find((row) => {
+        const ageDays = (Date.now() - new Date(row.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+        return ageDays >= 7 && Number(row.wordCount || 0) >= 1200 && row.canonicalUrl;
+      });
+
+      if (outreachCandidate) {
+        try {
+          const opportunities = await localDB.table<any>('backlink_opportunities').list({ orderBy: { createdAt: 'desc' }, limit: 1 });
+          let targetSite = 'https://example.com/resources';
+          if (opportunities[0]?.opportunityData) {
+            try {
+              const parsed = JSON.parse(opportunities[0].opportunityData);
+              if (Array.isArray(parsed) && parsed[0]?.url) {
+                targetSite = String(parsed[0].url);
+              }
+            } catch {
+              // Ignore malformed opportunity payloads.
+            }
+          }
+          const targetDomain = (() => {
+            try { return new URL(targetSite).hostname; } catch { return 'example.com'; }
+          })();
+          const targetEmail = `editor@${targetDomain}`;
+
+          const outreachResponse = await fetch(apiUrl('/api/outreach-generator/generate'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contentId: outreachCandidate.id,
+              targetSite,
+              targetEmail,
+              outreachType: 'resource-page',
+            }),
+          });
+          const outreachPayload = await outreachResponse.json().catch(() => ({}));
+          if (outreachResponse.ok && outreachPayload?.success) {
+            outreachGenerated += 1;
+            actionResults.push({ step: 'outreach-generation', status: 'success', message: 'Generated outreach draft.' });
+          } else {
+            actionResults.push({ step: 'outreach-generation', status: 'failed', message: outreachPayload?.error || 'Failed to generate outreach.' });
+          }
+        } catch (error) {
+          actionResults.push({ step: 'outreach-generation', status: 'failed', message: error instanceof Error ? error.message : 'Outreach generation failed.' });
+        }
+      } else {
+        actionResults.push({ step: 'outreach-generation', status: 'skipped', message: 'No 7+ day high-value page available for outreach.' });
       }
 
       // Persist last/next run
       const now = new Date().toISOString();
       const freq = settings?.frequency ?? 'weekly';
       await saveSettings.mutateAsync({ lastRun: now, nextRun: calcNextRun(freq) });
+
+      const runLog = await localDB.table<RunLog>('runLogs').create({
+        runAt: now,
+        actions: actionResults,
+        totalPlatformsPosted,
+        outreachGenerated,
+        outreachSent,
+      });
+      setLastRunLog(runLog);
+      queryClient.invalidateQueries({ queryKey: ['automation-last-run-log'] });
 
       toast.success('Content generated successfully!');
       addBreadcrumb('automation_success', 'AutomationEngine', { title: data.title, wordCount: actualWordCount });
@@ -275,14 +485,43 @@ export const AutomationEngine = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold flex items-center gap-2">
-            Autonomous SEO Engine
+            Guided SEO Engine
             <Badge className={`border-none ${isEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-secondary text-muted-foreground'}`}>
               {isEnabled ? 'ACTIVE' : 'PAUSED'}
             </Badge>
           </h2>
-          <p className="text-muted-foreground mt-1">Generate SEO blog posts and run on a schedule.</p>
+          <p className="text-muted-foreground mt-1">Choose the next best SEO action, create or refresh content, and prepare own-site publishing before syndication.</p>
         </div>
       </div>
+
+      {(lastRunLog || persistedRunLog) && (
+        <Card className="border-primary/10">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Last automation run</CardTitle>
+            <CardDescription>
+              {(lastRunLog || persistedRunLog)?.runAt ? new Date((lastRunLog || persistedRunLog)!.runAt).toLocaleString() : ''}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3">Platforms posted: <span className="font-semibold">{(lastRunLog || persistedRunLog)?.totalPlatformsPosted ?? 0}</span></div>
+              <div className="rounded-lg border p-3">Outreach generated: <span className="font-semibold">{(lastRunLog || persistedRunLog)?.outreachGenerated ?? 0}</span></div>
+              <div className="rounded-lg border p-3">Outreach sent: <span className="font-semibold">{(lastRunLog || persistedRunLog)?.outreachSent ?? 0}</span></div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Run steps</p>
+              <div className="space-y-1">
+                {(lastRunLog || persistedRunLog)?.actions?.map((action, index) => (
+                  <div key={`${action.step}-${index}`} className="flex items-center justify-between gap-3 text-xs">
+                    <span>{action.step}</span>
+                    <Badge variant="outline" className="uppercase">{action.status}</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Settings */}
@@ -326,8 +565,8 @@ export const AutomationEngine = () => {
             {/* Auto-Distribute Section */}
             <div className="flex items-center justify-between p-3 bg-secondary/40 rounded-lg">
               <div>
-                <p className="font-medium text-sm">Auto-Distribute</p>
-                <p className="text-xs text-muted-foreground">Publish content after generation</p>
+                <p className="font-medium text-sm">Own-Site First Publish Prep</p>
+                <p className="text-xs text-muted-foreground">Queue CMS or syndication connectors after draft generation</p>
               </div>
               <Switch
                 checked={autoDistribute}
@@ -338,7 +577,7 @@ export const AutomationEngine = () => {
 
             {autoDistribute && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Distribution Platforms</label>
+                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Publish Targets</label>
                 <div className="space-y-2">
                   {DIST_PLATFORMS.map(p => (
                     <label key={p.id} className="flex items-center gap-2.5 cursor-pointer group">
@@ -354,9 +593,24 @@ export const AutomationEngine = () => {
                 </div>
                 {lastDistributed && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Last distributed to: {lastDistributed}
+                    Last prepared targets: {lastDistributed}
                   </p>
                 )}
+              </div>
+            )}
+
+            {nextActions.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-primary/10 bg-secondary/30 p-3">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Best Next Actions</p>
+                {nextActions.map(action => (
+                  <div key={action.id} className="flex items-start justify-between gap-3 rounded-lg bg-background/80 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium">{action.title}</p>
+                      <p className="text-xs text-muted-foreground">{action.summary}</p>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] uppercase shrink-0">{action.source}</Badge>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -381,9 +635,9 @@ export const AutomationEngine = () => {
         <Card className="lg:col-span-2 border-primary/10">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Play className="h-4 w-4 text-primary" /> Generate Content Now
+              <Play className="h-4 w-4 text-primary" /> Run Best SEO Action
             </CardTitle>
-            <CardDescription>Enter your site URL and the AI will write a full SEO blog post for it.</CardDescription>
+            <CardDescription>Enter your site URL and the AI will generate the next best own-site SEO draft or refresh candidate with workflow tracking.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleRun} className="flex gap-3">

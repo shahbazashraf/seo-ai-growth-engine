@@ -58,9 +58,11 @@ interface ContentLabRow {
   metaDescription: string;
   keywords: string;       // JSON string
   imageUrls: string;      // JSON string
-  status: 'draft' | 'published';
+  status: 'draft' | 'review' | 'approved' | 'scheduled' | 'published' | 'failed';
   platformsPublished: string; // JSON string {}
   wordCount: number;
+  canonicalUrl?: string | null;
+  publishSource?: 'api' | 'manual' | 'scheduled' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -203,6 +205,8 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
   // ── Mutation: save draft ──
   const saveDraftMutation = useMutation<ContentLabRow, Error, void>({
     mutationFn: async () => {
+      console.log('[ContentLab] Attempting to save draft...', { title, wordCount });
+      log.info('Saving draft', { title, wordCount });
       const payload = {
         title,
         content,
@@ -212,11 +216,15 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
         status: 'draft' as const,
         wordCount,
         platformsPublished: '{}',
+        canonicalUrl: null,
+        publishSource: null,
         updatedAt: new Date().toISOString(),
       };
       if (editId) {
+        console.log('[ContentLab] Updating existing record:', editId);
         return localDB.table<ContentLabRow>('content_lab').update(editId, payload);
       }
+      console.log('[ContentLab] Creating new record');
       return localDB.table<ContentLabRow>('content_lab').create({
         ...payload,
         userId: '',
@@ -224,11 +232,16 @@ export function ContentLab({ projectId, onNavigate }: ContentLabProps) {
       });
     },
     onSuccess: (row) => {
+      console.log('[ContentLab] Save successful!', row);
       setEditId(row.id);
       queryClient.invalidateQueries({ queryKey: ['content_lab'] });
       toast.success('Draft saved!');
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      console.error('[ContentLab] Save failed!', e);
+      log.error('Save failed', { message: e.message });
+      toast.error(e.message);
+    },
   });
 
   // ── Mutation: delete ──

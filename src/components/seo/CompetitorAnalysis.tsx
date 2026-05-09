@@ -23,19 +23,34 @@ const log = createLogger('CompetitorAnalysis');
 interface CompetitorResult {
   keyword: string;
   searchIntent: 'informational' | 'navigational' | 'transactional' | 'commercial';
+  searchIntentSource?: 'scraped' | 'estimated' | 'ai-suggested';
   searchVolumeEstimate: string;
+  searchVolumeSource?: 'scraped' | 'estimated' | 'ai-suggested';
   difficultyScore: number;
+  difficultySource?: 'scraped' | 'estimated' | 'ai-suggested';
   averageWordCount: number;
+  averageWordCountSource?: 'scraped' | 'estimated' | 'ai-suggested';
   targetReadability: string;
   topCompetitors: Array<{
     rank: number;
     url: string;
     domainAuthority: number;
+    domainAuthoritySource?: 'scraped' | 'estimated' | 'ai-suggested';
     wordCount: number;
+    wordCountSource?: 'scraped' | 'estimated' | 'ai-suggested';
     contentGaps: string[];
+    contentGapSource?: 'scraped' | 'estimated' | 'ai-suggested';
   }>;
   recommendedHeadings: Array<{ level: 'H2' | 'H3', text: string }>;
   nlpKeywords: Array<{ word: string, importance: number }>;
+}
+
+function ProvenanceBadge({ source = 'ai-suggested' }: { source?: string }) {
+  return (
+    <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 bg-secondary/50">
+      {source}
+    </Badge>
+  );
 }
 
 export function CompetitorAnalysis() {
@@ -98,6 +113,16 @@ export function CompetitorAnalysis() {
       }`;
 
       const aiData = await geminiGenerateJSON<CompetitorResult>(prompt);
+      aiData.searchIntentSource ??= 'ai-suggested';
+      aiData.searchVolumeSource ??= 'estimated';
+      aiData.difficultySource ??= 'estimated';
+      aiData.averageWordCountSource ??= 'scraped';
+      aiData.topCompetitors = aiData.topCompetitors.map((comp) => ({
+        ...comp,
+        domainAuthoritySource: comp.domainAuthoritySource ?? 'estimated',
+        wordCountSource: comp.wordCountSource ?? 'scraped',
+        contentGapSource: comp.contentGapSource ?? 'ai-suggested',
+      }));
       
       setResult(aiData);
       toast.success('Competitor intelligence gathered!');
@@ -167,6 +192,7 @@ export function CompetitorAnalysis() {
                   <div className="p-2 bg-blue-500/10 rounded-lg mb-2"><BarChart3 className="h-4 w-4 text-blue-500" /></div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Intent</p>
                   <p className="text-lg font-bold capitalize">{result.searchIntent}</p>
+                  <div className="mt-2"><ProvenanceBadge source={result.searchIntentSource} /></div>
                 </CardContent>
               </Card>
               <Card className="border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-colors">
@@ -178,6 +204,7 @@ export function CompetitorAnalysis() {
                       {result.difficultyScore}/100
                     </p>
                   </div>
+                  <div className="mt-2"><ProvenanceBadge source={result.difficultySource} /></div>
                 </CardContent>
               </Card>
               <Card className="border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-colors">
@@ -185,6 +212,7 @@ export function CompetitorAnalysis() {
                   <div className="p-2 bg-emerald-500/10 rounded-lg mb-2"><FileText className="h-4 w-4 text-emerald-500" /></div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Avg Words</p>
                   <p className="text-lg font-bold">{result.averageWordCount.toLocaleString()}</p>
+                  <div className="mt-2"><ProvenanceBadge source={result.averageWordCountSource} /></div>
                 </CardContent>
               </Card>
               <Card className="border-border/50 bg-secondary/20 hover:bg-secondary/40 transition-colors">
@@ -192,6 +220,7 @@ export function CompetitorAnalysis() {
                   <div className="p-2 bg-amber-500/10 rounded-lg mb-2"><Globe className="h-4 w-4 text-amber-500" /></div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Volume Est.</p>
                   <p className="text-lg font-bold">{result.searchVolumeEstimate}</p>
+                  <div className="mt-2"><ProvenanceBadge source={result.searchVolumeSource} /></div>
                 </CardContent>
               </Card>
             </div>
@@ -228,12 +257,23 @@ export function CompetitorAnalysis() {
                           <Badge variant="outline" className={`font-mono text-[10px] ${comp.domainAuthority > 80 ? 'bg-rose-500/10 text-rose-600 border-rose-200' : 'bg-secondary'}`}>
                             DR {comp.domainAuthority}
                           </Badge>
+                          <div className="mt-1 flex justify-center">
+                            <ProvenanceBadge source={comp.domainAuthoritySource} />
+                          </div>
                         </TableCell>
-                        <TableCell className="text-right text-sm">{comp.wordCount.toLocaleString()}</TableCell>
+                        <TableCell className="text-right text-sm">
+                          <div>{comp.wordCount.toLocaleString()}</div>
+                          <div className="mt-1 flex justify-end">
+                            <ProvenanceBadge source={comp.wordCountSource} />
+                          </div>
+                        </TableCell>
                         <TableCell className="text-sm">
                           <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-600 text-[10px] font-semibold">
                             <Zap className="h-3 w-3" /> {comp.contentGaps[0]}
                           </span>
+                          <div className="mt-1">
+                            <ProvenanceBadge source={comp.contentGapSource} />
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -1,34 +1,40 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Link2, Loader2, Search, ExternalLink, CheckCircle2, XCircle,
-  Copy, TrendingUp, Shield, Target, Mail, Globe, BarChart2, Zap
-} from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckCircle2, Loader2, Mail, Search, XCircle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { localDB } from '@/lib/local-db';
+import { apiUrl } from '@/lib/api-endpoints';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import toast from 'react-hot-toast';
-import { geminiGenerate, geminiGenerateJSON } from '@/lib/ai';
-import { createLogger, addBreadcrumb } from '@/lib/logger';
+import { Input } from '@/components/ui/input';
 
-const log = createLogger('Backlinks');
+type OutreachType = 'resource-page' | 'guest-post' | 'broken-link' | 'mention';
+type OutreachStatus = 'draft' | 'sent' | 'replied' | 'won' | 'lost';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+interface ContentRecord {
+  id: string;
+  title?: string;
+  canonicalUrl?: string;
+  createdAt?: string;
+}
 
 interface BacklinkRecord {
   id: string;
-  userId: string;
   siteUrl: string;
   sourceUrl: string;
-  anchorText: string;
-  domainAuthority: number;
-  status: 'active' | 'broken';
-  foundAt: string;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
+  verificationStatus?: 'ai-suggested' | 'outreach-sent' | 'verified' | 'lost';
+  wonViaOutreachId?: string;
+}
+
+interface OpportunityRecord {
+  id: string;
+  siteUrl: string;
+  opportunityData: string;
+  createdAt: string;
 }
 
 interface OpportunityData {
@@ -37,538 +43,391 @@ interface OpportunityData {
   reason: string;
   domainAuthority: number;
   type: string;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
 }
 
-interface OpportunityRecord {
+interface OutreachRecord {
   id: string;
-  userId: string;
-  siteUrl: string;
-  opportunityData: string; // JSON string of OpportunityData[]
-  createdAt: string;
+  contentId: string;
+  targetSite: string;
+  targetEmail: string;
+  targetName?: string;
+  outreachType: OutreachType;
+  subject: string;
+  bodyHtml: string;
+  status: OutreachStatus;
+  generatedAt?: string;
+  sentAt?: string;
+  repliedAt?: string;
+  wonAt?: string;
+  gmailMessageId?: string;
+  gmailThreadId?: string;
+  createdAt?: string;
 }
 
-interface SiteRecord {
-  id: string;
-  userId: string;
-  url: string;
-  isPrimary: number | string;
-  lastAuditAt: string | null;
-  createdAt: string;
+function statusBadge(status: OutreachStatus) {
+  if (status === 'won') return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border">won</Badge>;
+  if (status === 'replied') return <Badge className="bg-amber-100 text-amber-700 border-amber-200 border">replied</Badge>;
+  if (status === 'sent') return <Badge className="bg-blue-100 text-blue-700 border-blue-200 border">sent</Badge>;
+  if (status === 'lost') return <Badge className="bg-red-100 text-red-700 border-red-200 border">lost</Badge>;
+  return <Badge variant="outline">draft</Badge>;
 }
 
-interface ApiBacklink {
-  siteUrl: string;
-  sourceUrl: string;
-  anchorText: string;
-  domainAuthority: number;
-  status: 'active' | 'broken';
+function typeToOutreachType(value: string): OutreachType {
+  if (value.toLowerCase().includes('guest')) return 'guest-post';
+  if (value.toLowerCase().includes('broken')) return 'broken-link';
+  if (value.toLowerCase().includes('mention')) return 'mention';
+  return 'resource-page';
 }
-
-interface ApiOpportunity {
-  siteName: string;
-  url: string;
-  reason: string;
-  domainAuthority: number;
-  type: string;
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function truncateUrl(url: string, max = 55): string {
-  try {
-    const u = new URL(url);
-    const clean = u.hostname + u.pathname;
-    return clean.length > max ? clean.slice(0, max) + '…' : clean;
-  } catch {
-    return url.length > max ? url.slice(0, max) + '…' : url;
-  }
-}
-
-function DaBadge({ score }: { score: number }) {
-  const s = Number(score);
-  const cls =
-    s >= 70 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-    s >= 40 ? 'bg-amber-100 text-amber-700 border-amber-200' :
-              'bg-red-100 text-red-700 border-red-200';
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-bold ${cls}`}>
-      {s}
-    </span>
-  );
-}
-
-function StatusBadge({ status }: { status: 'active' | 'broken' }) {
-  return status === 'active' ? (
-    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 border gap-1 text-xs font-medium">
-      <CheckCircle2 className="h-3 w-3" /> Active
-    </Badge>
-  ) : (
-    <Badge className="bg-red-100 text-red-700 border-red-200 border gap-1 text-xs font-medium">
-      <XCircle className="h-3 w-3" /> Broken
-    </Badge>
-  );
-}
-
-const ANALYZE_STEPS = [
-  'Crawling backlink sources…',
-  'Scoring domain authority…',
-  'Finding link opportunities…',
-  'Saving results…',
-];
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export const BacklinksManager = () => {
   const queryClient = useQueryClient();
   const [siteUrl, setSiteUrl] = useState('');
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analyzeStep, setAnalyzeStep] = useState(0);
+  const [emailByOpportunity, setEmailByOpportunity] = useState<Record<string, string>>({});
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [generatingKey, setGeneratingKey] = useState<string | null>(null);
+  const [replyChecking, setReplyChecking] = useState(false);
 
-  // Outreach dialog
-  const [outreachEmail, setOutreachEmail] = useState<string | null>(null);
-  const [outreachDialogOpen, setOutreachDialogOpen] = useState(false);
-  const [generatingEmailFor, setGeneratingEmailFor] = useState<string | null>(null);
-
-  // ── DB queries ──────────────────────────────────────────────────────────────
-
-  const { data: backlinks = [], refetch: refetchBacklinks } = useQuery<BacklinkRecord[]>({
-    queryKey: ['backlinks'],
-    queryFn: async () => {
-      return await localDB.table<BacklinkRecord>('backlinks').list({
-        orderBy: { foundAt: 'desc' },
-      });
-    },
+  const { data: contentRows = [] } = useQuery<ContentRecord[]>({
+    queryKey: ['content-lab-for-outreach'],
+    queryFn: async () => await localDB.table<ContentRecord>('content_lab').list({ orderBy: { createdAt: 'desc' }, limit: 50 }),
   });
 
-  const { data: opportunityRows = [], refetch: refetchOpportunities } = useQuery<OpportunityRecord[]>({
-    queryKey: ['backlink-opportunities'],
-    queryFn: async () => {
-      return await localDB.table<OpportunityRecord>('backlink_opportunities').list({
-        orderBy: { createdAt: 'desc' },
-        limit: 20,
-      });
-    },
+  const { data: opportunityRows = [] } = useQuery<OpportunityRecord[]>({
+    queryKey: ['backlink-opportunities-v5'],
+    queryFn: async () => await localDB.table<OpportunityRecord>('backlink_opportunities').list({ orderBy: { createdAt: 'desc' }, limit: 50 }),
   });
 
-  // ── Parsed opportunities (most recent set for the current siteUrl) ──────────
+  const { data: outreachRecords = [], refetch: refetchOutreach } = useQuery<OutreachRecord[]>({
+    queryKey: ['outreach-records'],
+    queryFn: async () => await localDB.table<OutreachRecord>('outreachRecords').list({ orderBy: { createdAt: 'desc' }, limit: 300 }),
+  });
 
-  const opportunities: OpportunityData[] = React.useMemo(() => {
-    const filtered = siteUrl.trim()
-      ? opportunityRows.filter(r => r.siteUrl === siteUrl.trim())
+  const opportunities = useMemo(() => {
+    const rows = siteUrl.trim()
+      ? opportunityRows.filter((row) => row.siteUrl === siteUrl.trim())
       : opportunityRows;
-    if (!filtered.length) return [];
-    try { return JSON.parse(filtered[0].opportunityData) as OpportunityData[]; } catch { return []; }
+    const parsed: Array<OpportunityData & { sourceSiteUrl: string }> = [];
+    rows.forEach((row) => {
+      try {
+        const list = JSON.parse(row.opportunityData) as OpportunityData[];
+        list.forEach((item) => parsed.push({ ...item, sourceSiteUrl: row.siteUrl }));
+      } catch {
+        // Ignore malformed rows
+      }
+    });
+    return parsed.slice(0, 40);
   }, [opportunityRows, siteUrl]);
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
+  const wonLinks = outreachRecords.filter((row) => row.status === 'won');
 
-  const displayBacklinks = siteUrl.trim()
-    ? backlinks.filter(b => b.siteUrl === siteUrl.trim())
-    : backlinks;
+  const generateEmail = async (opp: OpportunityData & { sourceSiteUrl: string }, targetEmail: string) => {
+    const content = contentRows.find((row) => Boolean(row.canonicalUrl)) || contentRows[0];
+    if (!content?.id) {
+      toast.error('Create at least one content item before outreach.');
+      return;
+    }
+    if (!targetEmail.trim()) {
+      toast.error('Enter a target email first.');
+      return;
+    }
 
-  const totalBacklinks = displayBacklinks.length;
-  const avgDA = totalBacklinks
-    ? Math.round(displayBacklinks.reduce((s, b) => s + Number(b.domainAuthority), 0) / totalBacklinks)
-    : 0;
-  const activeCount = displayBacklinks.filter(b => b.status === 'active').length;
-  const brokenCount = displayBacklinks.filter(b => b.status === 'broken').length;
+    const key = `${opp.url}-${targetEmail}`;
+    setGeneratingKey(key);
+    try {
+      const response = await fetch(apiUrl('/api/outreach-generator/generate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentId: content.id,
+          targetSite: opp.url,
+          targetEmail: targetEmail.trim(),
+          outreachType: typeToOutreachType(opp.type),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to generate outreach email.');
+      }
 
-  // ── Analyze mutation ────────────────────────────────────────────────────────
+      const record = payload.outreachRecord as OutreachRecord;
+      await localDB.table<OutreachRecord>('outreachRecords').create({
+        id: record.id,
+        contentId: record.contentId,
+        targetSite: record.targetSite,
+        targetEmail: record.targetEmail,
+        targetName: record.targetName || '',
+        outreachType: record.outreachType,
+        subject: record.subject,
+        bodyHtml: record.bodyHtml,
+        status: 'draft',
+        generatedAt: record.generatedAt || new Date().toISOString(),
+      });
+      await refetchOutreach();
+      toast.success('Outreach email generated.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to generate outreach email');
+    } finally {
+      setGeneratingKey(null);
+    }
+  };
 
-  const handleAnalyze = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const url = siteUrl.trim();
-    if (!url) { toast.error('Enter a site URL first'); return; }
+  const sendNow = async (record: OutreachRecord) => {
+    setSendingId(record.id);
+    try {
+      const response = await fetch(apiUrl('/api/outreach-sender/send'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outreachId: record.id }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to send outreach email.');
+      }
 
-    setAnalyzing(true);
-    setAnalyzeStep(0);
+      await localDB.table<OutreachRecord>('outreachRecords').update(record.id, {
+        status: 'sent',
+        sentAt: new Date().toISOString(),
+        gmailMessageId: payload.messageId || '',
+        gmailThreadId: payload.threadId || '',
+      });
 
-    const durations = [2500, 4000, 3500];
-    let elapsed = 0;
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    durations.forEach((d, i) => {
-      elapsed += d;
-      timers.push(setTimeout(() => setAnalyzeStep(i + 1), elapsed));
+      const backlinks = await localDB.table<BacklinkRecord>('backlinks').list({ where: { sourceUrl: record.targetSite } });
+      await Promise.all(backlinks.map((link) => localDB.table<BacklinkRecord>('backlinks').update(link.id, {
+        verificationStatus: 'outreach-sent',
+      })));
+
+      await refetchOutreach();
+      toast.success('Outreach email sent.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to send outreach email');
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const checkReplies = async () => {
+    setReplyChecking(true);
+    try {
+      const response = await fetch(apiUrl('/api/outreach-sender/check-replies'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Reply check failed.');
+      }
+
+      const updated = Array.isArray(payload.updatedRecords) ? payload.updatedRecords : [];
+      await Promise.all(updated.map((row: OutreachRecord) => localDB.table<OutreachRecord>('outreachRecords').update(row.id, {
+        status: 'replied',
+        repliedAt: row.repliedAt || new Date().toISOString(),
+      })));
+      await refetchOutreach();
+      toast.success(`Reply check completed. ${updated.length} replied thread(s) found.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to check replies');
+    } finally {
+      setReplyChecking(false);
+    }
+  };
+
+  const markOutcome = async (record: OutreachRecord, outcome: 'won' | 'lost') => {
+    await localDB.table<OutreachRecord>('outreachRecords').update(record.id, {
+      status: outcome,
+      wonAt: outcome === 'won' ? new Date().toISOString() : '',
     });
 
-    try {
-      // Ensure site exists in sites table
-      const existingSites = await localDB.table<SiteRecord>('sites').list({ where: { url }, limit: 1 });
-      if (!existingSites.length) {
-        await localDB.table<SiteRecord>('sites').create({ userId: '', url, isPrimary: 0, lastAuditAt: null });
-      }
+    const backlinks = await localDB.table<BacklinkRecord>('backlinks').list({ where: { sourceUrl: record.targetSite } });
+    await Promise.all(backlinks.map((link) => localDB.table<BacklinkRecord>('backlinks').update(link.id, {
+      verificationStatus: outcome === 'won' ? 'verified' : 'lost',
+      wonViaOutreachId: outcome === 'won' ? record.id : '',
+      source: outcome === 'won' ? 'scraped' : link.source,
+    })));
 
-      // Generate backlinks and opportunities via Gemini directly
-      const aiResult = await geminiGenerateJSON<{ backlinks: ApiBacklink[]; opportunities: ApiOpportunity[] }>(
-        `For a website at ${url}, generate realistic SEO backlink data. Return ONLY valid JSON with this structure:\n{\n  "backlinks": [{ "sourceUrl": "https://...", "anchorText": "...", "domainAuthority": 45, "status": "active" }],\n  "opportunities": [{ "siteName": "...", "url": "https://...", "reason": "why they would link", "domainAuthority": 45, "type": "guest post" }]\n}\n\nGenerate 5 realistic backlinks and 8 link-building opportunities.`
-      );
-
-      timers.forEach(clearTimeout);
-      setAnalyzeStep(3);
-
-      const data = aiResult;
-
-      // Save backlinks to DB
-      await Promise.all(
-        (data.backlinks || []).map(bl =>
-          localDB.table<BacklinkRecord>('backlinks').create({
-            userId: '',
-            siteUrl: url,
-            sourceUrl: bl.sourceUrl,
-            anchorText: bl.anchorText || 'Visit Site',
-            domainAuthority: bl.domainAuthority,
-            status: bl.status || 'active',
-            foundAt: new Date().toISOString(),
-          })
-        )
-      );
-
-      // Save opportunities
-      if (data.opportunities?.length) {
-        await localDB.table<OpportunityRecord>('backlink_opportunities').create({
-          userId: '',
-          siteUrl: url,
-          opportunityData: JSON.stringify(data.opportunities),
-          createdAt: new Date().toISOString(),
-        });
-      }
-
-      await Promise.all([refetchBacklinks(), refetchOpportunities()]);
-      toast.success(`Found ${data.backlinks?.length ?? 0} backlinks & ${data.opportunities?.length ?? 0} opportunities`);
-    } catch (err: any) {
-      timers.forEach(clearTimeout);
-      toast.error(err.message || 'Analysis failed. Try again.');
-    } finally {
-      setAnalyzing(false);
-    }
+    await refetchOutreach();
+    toast.success(outcome === 'won' ? 'Marked as won and backlink verified.' : 'Marked as lost.');
   };
-
-  // ── Generate outreach email ─────────────────────────────────────────────────
-
-  const generateOutreach = async (opportunity: OpportunityData) => {
-    setGeneratingEmailFor(opportunity.url);
-    try {
-      const emailText = await geminiGenerate(
-        `Write a personalized outreach email to get a backlink from ${opportunity.siteName} (${opportunity.url}) for the website ${siteUrl}. The content piece is titled "Content from ${siteUrl || 'my site'}". Make it professional, concise, and compelling. Return plain text email only.`
-      );
-
-      setOutreachEmail(emailText);
-      setOutreachDialogOpen(true);
-      toast.success('Outreach email generated!');
-    } catch (err: any) {
-      toast.error(err.message || 'Email generation failed');
-    } finally {
-      setGeneratingEmailFor(null);
-    }
-  };
-
-  const copyEmail = () => {
-    if (!outreachEmail) return;
-    navigator.clipboard.writeText(outreachEmail);
-    toast.success('Email copied to clipboard');
-  };
-
-  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* ── Analyze Input ── */}
-      <Card className="border-primary/20 shadow-sm">
-        <CardHeader className="pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5 text-primary" />
-            Backlinks Analysis Engine
-          </CardTitle>
-          <CardDescription>
-            Enter your site URL to discover existing backlinks and AI-generated link opportunities.
-          </CardDescription>
+    <div className="space-y-6">
+      <Card className="border-primary/10">
+        <CardHeader>
+          <CardTitle>Backlink Outreach Engine</CardTitle>
+          <CardDescription>Generate personalized outreach, send through Gmail, track replies, and promote won links to verified status.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAnalyze} className="flex flex-col sm:flex-row gap-3">
-            <Input
-              type="url"
-              placeholder="https://yoursite.com"
-              value={siteUrl}
-              onChange={e => setSiteUrl(e.target.value)}
-              disabled={analyzing}
-              required
-              className="flex-1 h-11 text-base"
-            />
-            <Button
-              type="submit"
-              disabled={analyzing}
-              className="h-11 px-7 shadow-md shadow-primary/20 shrink-0"
-            >
-              {analyzing
-                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing…</>
-                : <><Search className="h-4 w-4 mr-2" />Analyze Backlinks</>}
-            </Button>
-          </form>
-
-          {/* Progress steps */}
-          {analyzing && (
-            <div className="mt-5 p-4 bg-secondary/40 rounded-xl border border-primary/10 space-y-3">
-              <p className="text-sm font-medium text-primary">
-                {ANALYZE_STEPS[analyzeStep]}
-              </p>
-              <div className="flex gap-2">
-                {ANALYZE_STEPS.map((s, i) => (
-                  <div
-                    key={i}
-                    className={`flex-1 h-1.5 rounded-full transition-all duration-700 ${
-                      i < analyzeStep
-                        ? 'bg-primary'
-                        : i === analyzeStep
-                        ? 'bg-primary/50 animate-pulse'
-                        : 'bg-border'
-                    }`}
-                  />
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                This may take 10–15 seconds — hang tight…
-              </p>
-            </div>
-          )}
+        <CardContent className="flex gap-3">
+          <Input
+            placeholder="Filter opportunities by site URL (optional)"
+            value={siteUrl}
+            onChange={(e) => setSiteUrl(e.target.value)}
+          />
+          <Button variant="outline" onClick={() => setSiteUrl('')}>
+            <Search className="h-4 w-4 mr-1.5" /> Clear
+          </Button>
         </CardContent>
       </Card>
 
-      {/* ── Tabs ── */}
-      <Tabs defaultValue="backlinks">
-        <TabsList className="bg-transparent border-b border-border rounded-none p-0 h-auto w-full justify-start gap-0 max-w-sm">
-          <TabsTrigger value="backlinks" className="gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground flex items-center">
-            <Link2 className="h-3.5 w-3.5" />
-            Your Backlinks
-            {totalBacklinks > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-bold">
-                {totalBacklinks}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="opportunities" className="gap-1.5 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 pb-3 pt-1 text-muted-foreground flex items-center">
-            <Target className="h-3.5 w-3.5" />
-            Opportunities
-            {opportunities.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-bold">
-                {opportunities.length}
-              </span>
-            )}
-          </TabsTrigger>
+      <Tabs defaultValue="opportunities">
+        <TabsList>
+          <TabsTrigger value="opportunities">Opportunities</TabsTrigger>
+          <TabsTrigger value="outreach">Outreach</TabsTrigger>
+          <TabsTrigger value="won-links">Won links</TabsTrigger>
         </TabsList>
 
-        {/* ─── Your Backlinks Tab ─── */}
-        <TabsContent value="backlinks" className="mt-6 space-y-5">
-          {/* Stats */}
-          {totalBacklinks > 0 && (
-            <div className="grid grid-cols-3 gap-4">
-              <Card className="border-primary/10">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                    <Link2 className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{totalBacklinks}</p>
-                    <p className="text-xs text-muted-foreground">Total Backlinks</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-primary/10">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                    <BarChart2 className="h-5 w-5 text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{avgDA}</p>
-                    <p className="text-xs text-muted-foreground">Avg Domain Authority</p>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="border-primary/10">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      <span className="text-emerald-600">{activeCount}</span>
-                      <span className="text-muted-foreground text-base font-normal"> / </span>
-                      <span className="text-red-500">{brokenCount}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">Active / Broken</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Table */}
-          {displayBacklinks.length === 0 ? (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <Link2 className="h-12 w-12 mx-auto mb-4 text-primary/20" />
-                <p className="font-semibold text-foreground mb-1">No backlinks analyzed yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Enter your site URL above and click "Analyze Backlinks" to get started.
-                </p>
-              </CardContent>
-            </Card>
+        <TabsContent value="opportunities" className="space-y-4">
+          {opportunities.length === 0 ? (
+            <Card><CardContent className="py-12 text-center text-muted-foreground">No opportunities yet. Run backlink analysis first.</CardContent></Card>
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="rounded-md overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-secondary/30">
-                        <TableHead className="pl-4">Source URL</TableHead>
-                        <TableHead>Anchor Text</TableHead>
-                        <TableHead className="text-center">DA</TableHead>
-                        <TableHead className="text-center">Status</TableHead>
-                        <TableHead className="text-right pr-4">Found</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {displayBacklinks.map(bl => (
-                        <TableRow key={bl.id} className="hover:bg-secondary/20 transition-colors">
-                          <TableCell className="pl-4 max-w-[260px]">
-                            <a
-                              href={bl.sourceUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-primary hover:underline text-sm font-medium"
-                            >
-                              <span className="truncate">{truncateUrl(bl.sourceUrl)}</span>
-                              <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
-                            </a>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-sm text-foreground">{bl.anchorText || '—'}</span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <DaBadge score={bl.domainAuthority} />
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <StatusBadge status={bl.status} />
-                          </TableCell>
-                          <TableCell className="text-right pr-4 text-xs text-muted-foreground">
-                            {bl.foundAt ? new Date(bl.foundAt).toLocaleDateString() : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="grid md:grid-cols-2 gap-4">
+              {opportunities.map((opp, index) => {
+                const matchedDraft = outreachRecords.find((record) => record.targetSite === opp.url && record.status === 'draft');
+                const defaultEmail = emailByOpportunity[opp.url] || '';
+                const loading = generatingKey === `${opp.url}-${defaultEmail}`;
+                return (
+                  <Card key={`${opp.url}-${index}`} className="border-primary/10">
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-sm">{opp.siteName}</p>
+                          <p className="text-xs text-muted-foreground">{opp.url}</p>
+                        </div>
+                        <Badge variant="outline">AI-suggested</Badge>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">{opp.reason}</p>
+                      <div className="text-xs">
+                        <span className="font-medium">Outreach type:</span> {typeToOutreachType(opp.type)}
+                      </div>
+
+                      <Input
+                        placeholder="Target email (required)"
+                        value={defaultEmail}
+                        onChange={(e) => setEmailByOpportunity((prev) => ({ ...prev, [opp.url]: e.target.value }))}
+                      />
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => generateEmail(opp, defaultEmail)}
+                          disabled={loading}
+                        >
+                          {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Generating</> : <><Mail className="h-3.5 w-3.5 mr-1.5" />Generate email</>}
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => matchedDraft ? sendNow(matchedDraft) : toast.error('Generate email first.')}
+                          disabled={!matchedDraft || sendingId === matchedDraft.id}
+                        >
+                          {sendingId === matchedDraft?.id ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />Sending</> : 'Send now'}
+                        </Button>
+                      </div>
+
+                      {matchedDraft && (
+                        <div className="rounded border bg-secondary/20 p-2">
+                          <p className="text-xs font-medium">{matchedDraft.subject}</p>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-3">{matchedDraft.bodyHtml.replace(/<[^>]+>/g, ' ')}</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
           )}
         </TabsContent>
 
-        {/* ─── Opportunities Tab ─── */}
-        <TabsContent value="opportunities" className="mt-6">
-          {opportunities.length === 0 ? (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <Target className="h-12 w-12 mx-auto mb-4 text-primary/20" />
-                <p className="font-semibold text-foreground mb-1">No opportunities found yet</p>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Run a backlink analysis to discover AI-identified link building opportunities.
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => document.querySelector<HTMLInputElement>('input[type="url"]')?.focus()}
-                >
-                  <Search className="h-4 w-4 mr-2" /> Analyze Your Site
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
-              {opportunities.map((opp, idx) => (
-                <Card
-                  key={idx}
-                  className="border-primary/10 hover:border-primary/30 hover:shadow-md transition-all duration-200"
-                >
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm leading-tight mb-0.5">
-                          {opp.siteName}
-                        </p>
-                        <a
-                          href={opp.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline flex items-center gap-1 truncate"
-                        >
-                          <span className="truncate">{truncateUrl(opp.url, 42)}</span>
-                          <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                        </a>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <DaBadge score={opp.domainAuthority} />
-                      </div>
-                    </div>
+        <TabsContent value="outreach">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Outreach records</CardTitle>
+                <CardDescription>Track status, sent date, and reply outcomes.</CardDescription>
+              </div>
+              <Button variant="outline" onClick={checkReplies} disabled={replyChecking}>
+                {replyChecking ? <><Loader2 className="h-4 w-4 animate-spin mr-1.5" />Checking</> : 'Check replies'}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Target site</TableHead>
+                    <TableHead>Subject</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Sent date</TableHead>
+                    <TableHead>Reply?</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {outreachRecords.length === 0 ? (
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No outreach records yet.</TableCell></TableRow>
+                  ) : outreachRecords.map((record) => (
+                    <TableRow key={record.id}>
+                      <TableCell>{record.targetSite}</TableCell>
+                      <TableCell>{record.subject}</TableCell>
+                      <TableCell>{statusBadge(record.status)}</TableCell>
+                      <TableCell>{record.sentAt ? new Date(record.sentAt).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>{record.status === 'replied' || record.status === 'won' ? 'Yes' : 'No'}</TableCell>
+                      <TableCell className="text-right">
+                        {(record.status === 'replied' || record.status === 'sent') && (
+                          <div className="flex gap-2 justify-end">
+                            <Button size="sm" variant="outline" onClick={() => markOutcome(record, 'won')}>
+                              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Mark as Won
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => markOutcome(record, 'lost')}>
+                              <XCircle className="h-3.5 w-3.5 mr-1.5" /> Mark as Lost
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] bg-primary/5 border-primary/20 text-primary font-medium capitalize"
-                      >
-                        {opp.type}
-                      </Badge>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground leading-relaxed mb-4">
-                      {opp.reason}
-                    </p>
-
-                    <Button
-                      size="sm"
-                      className="w-full shadow-sm shadow-primary/10"
-                      disabled={generatingEmailFor === opp.url}
-                      onClick={() => generateOutreach(opp)}
-                    >
-                      {generatingEmailFor === opp.url
-                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />Generating…</>
-                        : <><Mail className="h-3.5 w-3.5 mr-2" />Generate Outreach Email</>}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+        <TabsContent value="won-links">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Verified won links</CardTitle>
+              <CardDescription>Outreach wins promoted from AI-suggested to Verified won.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Linking site</TableHead>
+                    <TableHead>Our page</TableHead>
+                    <TableHead>Date won</TableHead>
+                    <TableHead>Link type</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {wonLinks.length === 0 ? (
+                    <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No won links yet.</TableCell></TableRow>
+                  ) : wonLinks.map((record) => {
+                    const content = contentRows.find((row) => row.id === record.contentId);
+                    return (
+                      <TableRow key={record.id}>
+                        <TableCell>{record.targetSite}</TableCell>
+                        <TableCell>{content?.canonicalUrl || content?.title || '-'}</TableCell>
+                        <TableCell>{record.wonAt ? new Date(record.wonAt).toLocaleDateString() : '-'}</TableCell>
+                        <TableCell>{record.outreachType}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
-
-      {/* ── Outreach Email Dialog ── */}
-      <Dialog open={outreachDialogOpen} onOpenChange={setOutreachDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-primary" />
-              Outreach Email
-            </DialogTitle>
-            <DialogDescription>
-              AI-crafted personalised email for your link building outreach.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="mt-2">
-            <div className="relative">
-              <pre className="whitespace-pre-wrap text-sm leading-relaxed p-5 bg-secondary/30 rounded-xl border border-primary/10 max-h-80 overflow-y-auto font-sans text-foreground">
-                {outreachEmail}
-              </pre>
-              <Button
-                size="sm"
-                variant="outline"
-                className="absolute top-3 right-3"
-                onClick={copyEmail}
-              >
-                <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

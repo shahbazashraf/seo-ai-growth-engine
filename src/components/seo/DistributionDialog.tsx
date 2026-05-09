@@ -14,8 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { apiUrl } from '@/lib/api-endpoints';
 
-const DIST_URL = 'https://gbqxp58q--distribution-engine.functions.blink.new';
+const DIST_URL = apiUrl('/api/distribution-engine');
 
 interface PlatformCredential {
   id: string;

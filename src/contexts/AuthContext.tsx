@@ -1,19 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  User,
-  onAuthStateChanged,
-  signInWithPopup,
-  signOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-  AuthError,
-} from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '../lib/local-db';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
@@ -21,33 +13,14 @@ interface AuthContextType {
   logout: () => Promise<void>;
 }
 
-// ─── Human-readable Firebase error messages ───────────────────────────────────
-function getAuthErrorMessage(error: AuthError): string {
-  switch (error.code) {
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-      return 'Invalid email or password.';
-    case 'auth/invalid-credential':
-      return 'Invalid email or password.';
-    case 'auth/email-already-in-use':
-      return 'An account with this email already exists.';
-    case 'auth/weak-password':
-      return 'Password must be at least 6 characters.';
-    case 'auth/too-many-requests':
-      return 'Too many failed attempts. Please try again later.';
-    case 'auth/network-request-failed':
-      return 'Network error. Check your connection and try again.';
-    case 'auth/popup-blocked':
-      return 'Popup was blocked by your browser. Please allow popups and try again.';
-    case 'auth/popup-closed-by-user':
-      return 'Sign-in was cancelled.';
-    case 'auth/cancelled-popup-request':
-      return 'Sign-in was cancelled.';
-    case 'auth/invalid-api-key':
-      return 'Firebase is not configured. Check your .env.local file.';
-    default:
-      return error.message ?? 'Authentication failed. Please try again.';
-  }
+// ─── Human-readable Supabase error messages ───────────────────────────────────
+function getAuthErrorMessage(error: any): string {
+  const message = error.message || '';
+  if (message.includes('Invalid login credentials')) return 'Invalid email or password.';
+  if (message.includes('User already registered')) return 'An account with this email already exists.';
+  if (message.includes('Password should be')) return 'Password must be at least 6 characters.';
+  if (message.includes('Too many requests')) return 'Too many attempts. Please try again later.';
+  return message || 'Authentication failed. Please try again.';
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -56,40 +29,56 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (currentUser) => {
-        setUser(currentUser);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('[AuthContext] onAuthStateChanged error:', error);
-        setLoading(false);
-      }
-    );
-    return unsubscribe;
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // 2. Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  // ── Redirect Logic ──
+  const getRedirectURL = () => {
+    // Priority: 1. Explicit env var, 2. Current origin
+    const base = import.meta.env.VITE_SITE_URL || window.location.origin;
+    return `${base.replace(/\/$/, '')}/dashboard`;
+  };
 
   // ── Google OAuth ──
   const signInWithGoogle = async (): Promise<void> => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: getRedirectURL(),
+        }
+      });
+      if (error) throw error;
     } catch (error) {
-      const msg = getAuthErrorMessage(error as AuthError);
-      throw new Error(msg); // re-throw with friendly message for AuthPage to catch
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
   // ── Email / Password sign-in ──
   const signInWithEmail = async (email: string, password: string): Promise<void> => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
     } catch (error) {
-      const msg = getAuthErrorMessage(error as AuthError);
-      throw new Error(msg);
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
@@ -100,31 +89,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name?: string
   ): Promise<void> => {
     try {
-      const credential = await createUserWithEmailAndPassword(auth, email, password);
-      if (name?.trim()) {
-        await updateProfile(credential.user, { displayName: name.trim() });
-        // Force-refresh the user so displayName is immediately available
-        setUser({ ...credential.user, displayName: name.trim() } as User);
-      }
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: name?.trim() },
+          emailRedirectTo: getRedirectURL(),
+        }
+      });
+      if (error) throw error;
     } catch (error) {
-      const msg = getAuthErrorMessage(error as AuthError);
-      throw new Error(msg);
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
   // ── Logout ──
   const logout = async (): Promise<void> => {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error) {
-      const msg = getAuthErrorMessage(error as AuthError);
-      throw new Error(msg);
+      throw new Error(getAuthErrorMessage(error));
     }
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, logout }}
+      value={{ user, session, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, logout }}
     >
       {children}
     </AuthContext.Provider>
@@ -139,3 +130,4 @@ export function useAuth(): AuthContextType {
   }
   return context;
 }
+

@@ -213,7 +213,7 @@ Format the output as clean markdown.`;
 /**
  * Generates keyword suggestions based on a seed keyword
  */
-export async function generateKeywordSuggestions(seedKeyword: string): Promise<Array<{ keyword: string; volume: number; difficulty: number }>> {
+export async function generateKeywordSuggestions(seedKeyword: string): Promise<Array<{ keyword: string; volume: number; difficulty: number; source: 'ai-suggested' }>> {
   try {
     const data = await geminiGenerateJSON<{suggestions: Array<{ keyword: string; volume: number; difficulty: number }> }>(
       `Generate 10 related SEO keyword suggestions for: "${seedKeyword}". 
@@ -224,7 +224,10 @@ export async function generateKeywordSuggestions(seedKeyword: string): Promise<A
       Respond strictly in JSON: { "suggestions": [{ "keyword": "...", "volume": 1200, "difficulty": 45 }] }`
     );
 
-    return data.suggestions;
+    return data.suggestions.map((suggestion) => ({
+      ...suggestion,
+      source: 'ai-suggested' as const,
+    }));
   } catch (error) {
     console.error('Error generating keyword suggestions:', error);
     throw new Error('Failed to generate keyword suggestions. Please try again.');

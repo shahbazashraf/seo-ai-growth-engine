@@ -26,6 +26,7 @@ interface PageNode {
   outlinks: number;
   orphan: boolean;
   topicCluster: string;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
 }
 
 interface LinkRecommendation {
@@ -33,6 +34,7 @@ interface LinkRecommendation {
   targetUrl: string;
   suggestedAnchorText: string;
   context: string;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
 }
 
 interface GraphResult {
@@ -40,6 +42,7 @@ interface GraphResult {
   totalInternalLinks: number;
   orphanPagesCount: number;
   healthScore: number;
+  crawlSource?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
   nodes: PageNode[];
   recommendations: LinkRecommendation[];
 }
@@ -114,6 +117,9 @@ Return ONLY a valid JSON object matching this exact structure:
 }`;
 
       const aiData = await geminiGenerateJSON<GraphResult>(prompt);
+      aiData.crawlSource ??= 'ai-suggested';
+      aiData.nodes = aiData.nodes.map((node) => ({ ...node, source: node.source ?? 'ai-suggested' }));
+      aiData.recommendations = aiData.recommendations.map((rec) => ({ ...rec, source: rec.source ?? 'ai-suggested' }));
       
       clearInterval(interval);
       setProgress(100);
@@ -181,6 +187,9 @@ Return ONLY a valid JSON object matching this exact structure:
                 <span>{Math.round(progress)}%</span>
               </div>
               <Progress value={progress} className="h-2 [&>div]:bg-emerald-500" />
+              <p className="text-[10px] text-muted-foreground mt-2">
+                Current mode: AI-suggested structural model. Replace with a live crawler for measured site graph data.
+              </p>
             </div>
           )}
         </CardContent>
@@ -196,11 +205,14 @@ Return ONLY a valid JSON object matching this exact structure:
             {/* KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Card className="border-border/50 bg-secondary/20">
-                <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                  <p className="text-3xl font-bold text-foreground mb-1">{result.pagesScanned}</p>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Pages Scraped</p>
-                </CardContent>
-              </Card>
+              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                <p className="text-3xl font-bold text-foreground mb-1">{result.pagesScanned}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Pages Scraped</p>
+                <Badge variant="outline" className="mt-2 text-[9px] h-4 px-1 py-0 bg-secondary/50">
+                  {result.crawlSource}
+                </Badge>
+              </CardContent>
+            </Card>
               <Card className="border-border/50 bg-secondary/20">
                 <CardContent className="p-4 flex flex-col items-center justify-center text-center">
                   <p className="text-3xl font-bold text-emerald-500 mb-1">{result.totalInternalLinks}</p>
@@ -247,6 +259,9 @@ Return ONLY a valid JSON object matching this exact structure:
                               <h3 className="font-semibold text-sm truncate">{node.title}</h3>
                             </div>
                             <p className="text-xs text-muted-foreground truncate">{node.url}</p>
+                            <Badge variant="outline" className="mt-2 text-[9px] h-4 px-1 py-0 bg-secondary/50">
+                              {node.source}
+                            </Badge>
                           </div>
                           
                           <div className="flex items-center gap-4 shrink-0">
@@ -313,6 +328,9 @@ Return ONLY a valid JSON object matching this exact structure:
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="bg-teal-500/10 text-teal-700 border-teal-200 shadow-none text-[10px]">
                           Fix {idx + 1}
+                        </Badge>
+                        <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 bg-secondary/50">
+                          {rec.source}
                         </Badge>
                         <p className="text-xs text-muted-foreground">{rec.context}</p>
                       </div>

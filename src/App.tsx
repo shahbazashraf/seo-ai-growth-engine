@@ -66,7 +66,7 @@ const authRoute = createRoute({
 
 // Create the router
 const routeTree = rootRoute.addChildren([indexRoute, dashboardRoute, authRoute]);
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree } as any);
 
 // Register router for type safety
 declare module '@tanstack/react-router' {

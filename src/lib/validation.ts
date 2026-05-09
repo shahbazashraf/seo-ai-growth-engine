@@ -166,7 +166,7 @@ export function validate<T>(
   }
   return {
     success: false,
-    errors: result.error.errors.map((e) => e.message),
+    errors: result.error.issues.map((e) => e.message),
   };
 }
 
@@ -176,7 +176,8 @@ export function validate<T>(
 export function validateOrThrow<T>(schema: z.ZodSchema<T>, data: unknown): T {
   const result = validate(schema, data);
   if (!result.success) {
-    throw new Error(result.errors[0]);
+    const failure = result as { success: false; errors: string[] };
+    throw new Error(failure.errors[0]);
   }
   return result.data;
 }

@@ -12,8 +12,9 @@ import {
   Clock, Shield, Copy, Download, History, FileText
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { apiUrl } from '@/lib/api-endpoints';
 
-const AUTOMATION_URL = 'https://gbqxp58q--automation-run.functions.blink.new';
+const AUTOMATION_URL = apiUrl('/api/automation-run');
 
 interface GeneratedContent {
   title: string;

@@ -39,7 +39,7 @@ interface KeywordManagerProps {
 export function KeywordManager({ projectId, onSelectKeyword }: KeywordManagerProps) {
   const [newKeyword, setNewKeyword] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
-  const [suggestions, setSuggestions] = useState<Array<{ keyword: string; volume: number; difficulty: number }>>([]);
+  const [suggestions, setSuggestions] = useState<Array<{ keyword: string; volume: number; difficulty: number; source: 'ai-suggested' }>>([]);
 
   const { data: keywords = [], isLoading } = useKeywords(projectId);
   const createKeyword = useCreateKeyword();
@@ -50,12 +50,13 @@ export function KeywordManager({ projectId, onSelectKeyword }: KeywordManagerPro
     if (!newKeyword.trim()) return;
 
     try {
-      await createKeyword.mutateAsync({
-        projectId,
-        keyword: newKeyword.trim(),
-        volume: Math.floor(Math.random() * 5000) + 500, // Mock volume for manual entry
-        difficulty: Math.floor(Math.random() * 60) + 10, // Mock difficulty
-      });
+        await createKeyword.mutateAsync({
+          projectId,
+          keyword: newKeyword.trim(),
+          volume: Math.floor(Math.random() * 5000) + 500, // Mock volume for manual entry
+          difficulty: Math.floor(Math.random() * 60) + 10, // Mock difficulty
+          source: 'estimated',
+        });
       setNewKeyword('');
     } catch (error) {
       // toast handled in hook
@@ -80,7 +81,7 @@ export function KeywordManager({ projectId, onSelectKeyword }: KeywordManagerPro
     }
   };
 
-  const handleAddSuggestion = async (suggestion: { keyword: string; volume: number; difficulty: number }) => {
+  const handleAddSuggestion = async (suggestion: { keyword: string; volume: number; difficulty: number; source: 'ai-suggested' }) => {
     try {
       await createKeyword.mutateAsync({
         projectId,
@@ -138,9 +139,12 @@ export function KeywordManager({ projectId, onSelectKeyword }: KeywordManagerPro
                 <CardContent className="p-3 flex items-center justify-between">
                   <div className="space-y-1">
                     <p className="font-medium text-sm">{s.keyword}</p>
-                    <div className="flex gap-2 text-[10px] text-muted-foreground">
+                    <div className="flex gap-2 text-[10px] text-muted-foreground items-center">
                       <span>Vol: {s.volume}</span>
                       <span>Diff: {s.difficulty}</span>
+                      <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 bg-primary/5 text-primary border-primary/20">
+                        AI-suggested
+                      </Badge>
                     </div>
                   </div>
                   <Button 
@@ -203,6 +207,11 @@ export function KeywordManager({ projectId, onSelectKeyword }: KeywordManagerPro
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {kw.keyword}
+                          {(kw as Keyword & { source?: string }).source && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1 py-0 bg-secondary/50">
+                              {(kw as Keyword & { source?: string }).source}
+                            </Badge>
+                          )}
                           {onSelectKeyword && (
                             <Button 
                               variant="ghost" 

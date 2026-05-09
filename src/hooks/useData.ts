@@ -38,11 +38,16 @@ export interface AutomationSetting {
 
 export interface Project {
   id: string;
-  userId: string;
+  userId: string | null;
   url: string;
+  siteUrl?: string;
   name: string;
   targetAudience: string | null;
   growthGoal: string | null;
+  primaryLocale?: string | null;
+  targetMarket?: string | null;
+  cmsType?: 'unknown' | 'custom_webhook' | 'wordpress' | 'webflow' | 'ghost' | 'shopify' | null;
+  searchConsoleConnected?: boolean;
   createdAt: string;
 }
 
@@ -52,6 +57,7 @@ export interface Keyword {
   keyword: string;
   volume: number | null;
   difficulty: number | null;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
   createdAt: string;
 }
 
@@ -62,9 +68,33 @@ export interface Article {
   title: string | null;
   outline: string | null;
   content: string | null;
-  status: 'draft' | 'published' | 'scheduled';
+  status: 'draft' | 'review' | 'approved' | 'scheduled' | 'published' | 'failed';
   scheduledAt: string | null;
+  originSiteUrl?: string | null;
+  canonicalUrl?: string | null;
+  publishedUrl?: string | null;
+  distributionMode?: 'canonical' | 'teaser' | 'social' | null;
+  publishTargetType?: 'cms' | 'syndication' | 'social' | null;
+  syndicationPolicy?: 'full-repost' | 'canonical-repost' | 'teaser-linkback' | 'social-snippet' | null;
+  verificationStatus?: 'pending' | 'verified' | 'failed' | 'manual-review' | null;
+  provenance?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
+  publishSource?: 'api' | 'manual' | 'scheduled' | null;
   createdAt: string;
+}
+
+export interface DistributionLog {
+  id: string;
+  contentId: string;
+  platform: string;
+  mode: 'full-canonical' | 'teaser' | 'social-snippet';
+  status: 'pending' | 'posted' | 'failed';
+  publishedUrl: string | null;
+  platformPostId: string | null;
+  canonicalApplied: boolean;
+  postedAt: string | null;
+  error: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // Query keys
@@ -75,7 +105,14 @@ export const queryKeys = {
   keyword: (id: string) => ['keywords', 'detail', id] as const,
   articles: (projectId: string) => ['articles', projectId] as const,
   article: (id: string) => ['articles', 'detail', id] as const,
+  distributionLogs: ['distribution-logs'] as const,
+  seoActions: ['seo-actions'] as const,
+  performanceSnapshots: ['performance-snapshots'] as const,
 };
+
+export async function updateDistributionLog(logId: string, updates: Partial<DistributionLog>) {
+  return await localDB.table<DistributionLog>('distribution_logs').update(logId, updates);
+}
 
 // ==================== Projects ====================
 
@@ -115,11 +152,15 @@ export function useCreateProject() {
   return useMutation<Project, Error, CreateProjectInput>({
     mutationFn: async (input) => {
       const result = await localDB.table<Project>('projects').create({
-        userId: '',
         url: input.url,
+        siteUrl: input.url,
         name: input.name,
         targetAudience: input.targetAudience || null,
         growthGoal: input.growthGoal || null,
+        primaryLocale: 'en',
+        targetMarket: 'global',
+        cmsType: 'unknown',
+        searchConsoleConnected: false,
       });
       toast.success('Project created successfully!');
       return result;
@@ -145,6 +186,7 @@ export function useUpdateProject() {
     mutationFn: async (input) => {
       const result = await localDB.table<Project>('projects').update(input.id, {
         url: input.url,
+        siteUrl: input.url,
         name: input.name,
         targetAudience: input.targetAudience,
         growthGoal: input.growthGoal,
@@ -206,6 +248,7 @@ interface CreateKeywordInput {
   keyword: string;
   volume?: number;
   difficulty?: number;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
 }
 
 export function useCreateKeyword() {
@@ -218,6 +261,7 @@ export function useCreateKeyword() {
         keyword: input.keyword,
         volume: input.volume || null,
         difficulty: input.difficulty || null,
+        source: input.source || 'estimated',
       });
       toast.success('Keyword added successfully!');
       return result;
@@ -234,6 +278,7 @@ interface UpdateKeywordInput {
   keyword?: string;
   volume?: number;
   difficulty?: number;
+  source?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
 }
 
 export function useUpdateKeyword() {
@@ -245,6 +290,7 @@ export function useUpdateKeyword() {
         keyword: input.keyword,
         volume: input.volume,
         difficulty: input.difficulty,
+        source: input.source,
       });
       toast.success('Keyword updated successfully!');
       return result;
@@ -304,8 +350,17 @@ interface CreateArticleInput {
   title?: string;
   outline?: string;
   content?: string;
-  status?: 'draft' | 'published' | 'scheduled';
+  status?: 'draft' | 'review' | 'approved' | 'scheduled' | 'published' | 'failed';
   scheduledAt?: string;
+  originSiteUrl?: string;
+  canonicalUrl?: string | null;
+  publishedUrl?: string | null;
+  distributionMode?: 'canonical' | 'teaser' | 'social';
+  publishTargetType?: 'cms' | 'syndication' | 'social';
+  syndicationPolicy?: 'full-repost' | 'canonical-repost' | 'teaser-linkback' | 'social-snippet';
+  verificationStatus?: 'pending' | 'verified' | 'failed' | 'manual-review';
+  provenance?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
+  publishSource?: 'api' | 'manual' | 'scheduled' | null;
 }
 
 export function useCreateArticle() {
@@ -321,6 +376,15 @@ export function useCreateArticle() {
         content: input.content || null,
         status: input.status || 'draft',
         scheduledAt: input.scheduledAt || null,
+        originSiteUrl: input.originSiteUrl || null,
+        canonicalUrl: input.canonicalUrl || null,
+        publishedUrl: input.publishedUrl || null,
+        distributionMode: input.distributionMode || 'canonical',
+        publishTargetType: input.publishTargetType || 'cms',
+        syndicationPolicy: input.syndicationPolicy || 'canonical-repost',
+        verificationStatus: input.verificationStatus || 'pending',
+        provenance: input.provenance || 'ai-suggested',
+        publishSource: input.publishSource || null,
       });
       toast.success('Article created successfully!');
       return result;
@@ -338,8 +402,17 @@ interface UpdateArticleInput {
   title?: string;
   outline?: string;
   content?: string;
-  status?: 'draft' | 'published' | 'scheduled';
+  status?: 'draft' | 'review' | 'approved' | 'scheduled' | 'published' | 'failed';
   scheduledAt?: string | null;
+  originSiteUrl?: string | null;
+  canonicalUrl?: string | null;
+  publishedUrl?: string | null;
+  distributionMode?: 'canonical' | 'teaser' | 'social' | null;
+  publishTargetType?: 'cms' | 'syndication' | 'social' | null;
+  syndicationPolicy?: 'full-repost' | 'canonical-repost' | 'teaser-linkback' | 'social-snippet' | null;
+  verificationStatus?: 'pending' | 'verified' | 'failed' | 'manual-review' | null;
+  provenance?: 'measured' | 'scraped' | 'estimated' | 'ai-suggested';
+  publishSource?: 'api' | 'manual' | 'scheduled' | null;
 }
 
 export function useUpdateArticle() {
@@ -354,6 +427,15 @@ export function useUpdateArticle() {
         content: input.content,
         status: input.status,
         scheduledAt: input.scheduledAt,
+        originSiteUrl: input.originSiteUrl,
+        canonicalUrl: input.canonicalUrl,
+        publishedUrl: input.publishedUrl,
+        distributionMode: input.distributionMode,
+        publishTargetType: input.publishTargetType,
+        syndicationPolicy: input.syndicationPolicy,
+        verificationStatus: input.verificationStatus,
+        provenance: input.provenance,
+        publishSource: input.publishSource,
       });
       toast.success('Article updated successfully!');
       return result;
